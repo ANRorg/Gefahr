@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -103,6 +104,21 @@ func TestHandlerRejectsDeclaredOversizedBody(t *testing.T) {
 	h.ServeHTTP(recorder, req)
 	if recorder.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d", recorder.Code)
+	}
+}
+
+func TestHandlerMapsUpstreamTimeoutWithoutLeakingError(t *testing.T) {
+	h, err := NewHandler(proxyConfig(), roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, context.DeadlineExceeded }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	h.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://api.test/api", nil))
+	if recorder.Code != http.StatusGatewayTimeout {
+		t.Fatalf("status = %d", recorder.Code)
+	}
+	if recorder.Body.String() != "{\"code\":\"upstream_timeout\",\"message\":\"upstream timed out\"}\n" {
+		t.Fatalf("body = %q", recorder.Body.String())
 	}
 }
 

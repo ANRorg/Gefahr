@@ -2,6 +2,8 @@
 package proxy
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -56,7 +58,7 @@ func NewHandler(cfg config.Config, transport http.RoundTripper) (*Handler, error
 // ServeHTTP routes and streams one request through a selected healthy backend.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength > h.maxBodyBytes {
-		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "request body too large")
 		return
 	}
 	if r.Body != nil {
@@ -64,13 +66,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	route, ok := h.router.Match(r.Host, r.URL.Path)
 	if !ok {
-		http.Error(w, "route not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "route_not_found", "route not found")
 		return
 	}
 	pool := h.pools[route.Pool]
 	selected, err := pool.balancers[route.Strategy].Next(pool.backends)
 	if err != nil {
-		http.Error(w, "no healthy upstream", http.StatusServiceUnavailable)
+		writeError(w, http.StatusServiceUnavailable, "no_healthy_upstream", "no healthy upstream")
 		return
 	}
 	release := selected.Acquire()
@@ -88,8 +90,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			req.SetXForwarded()
 			req.Out.Header.Set("Forwarded", forwardedValue(req.In))
 		},
-		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
-			http.Error(w, "bad gateway", http.StatusBadGateway)
+		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+			var tooLarge *http.MaxBytesError
+			switch {
+			case errors.As(err, &tooLarge):
+				writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "request body too large")
+			case errors.Is(err, context.DeadlineExceeded):
+				writeError(w, http.StatusGatewayTimeout, "upstream_timeout", "upstream timed out")
+			default:
+				writeError(w, http.StatusBadGateway, "bad_gateway", "upstream request failed")
+			}
 		},
 	}
 	rp.ServeHTTP(w, r)
