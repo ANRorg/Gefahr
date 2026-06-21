@@ -24,9 +24,10 @@ type runtimePool struct {
 
 // Handler is an immutable routing snapshot with concurrency-safe backend state.
 type Handler struct {
-	router    *routing.Router
-	pools     map[string]*runtimePool
-	transport http.RoundTripper
+	router       *routing.Router
+	pools        map[string]*runtimePool
+	transport    http.RoundTripper
+	maxBodyBytes int64
 }
 
 // NewHandler compiles validated configuration into a request handler.
@@ -35,9 +36,9 @@ func NewHandler(cfg config.Config, transport http.RoundTripper) (*Handler, error
 		return nil, err
 	}
 	if transport == nil {
-		transport = http.DefaultTransport
+		transport = NewTransport(cfg)
 	}
-	h := &Handler{router: routing.New(cfg.Routes), pools: make(map[string]*runtimePool, len(cfg.Pools)), transport: transport}
+	h := &Handler{router: routing.New(cfg.Routes), pools: make(map[string]*runtimePool, len(cfg.Pools)), transport: transport, maxBodyBytes: cfg.Limits.MaxBodyBytes}
 	for name, poolCfg := range cfg.Pools {
 		pool := &runtimePool{retry: poolCfg.Retry, balancers: map[string]balance.Balancer{"round_robin": &balance.RoundRobin{}, "least_connections": &balance.LeastConnections{}}}
 		for _, backendCfg := range poolCfg.Backends {
@@ -54,6 +55,13 @@ func NewHandler(cfg config.Config, transport http.RoundTripper) (*Handler, error
 
 // ServeHTTP routes and streams one request through a selected healthy backend.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.ContentLength > h.maxBodyBytes {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, h.maxBodyBytes)
+	}
 	route, ok := h.router.Match(r.Host, r.URL.Path)
 	if !ok {
 		http.Error(w, "route not found", http.StatusNotFound)

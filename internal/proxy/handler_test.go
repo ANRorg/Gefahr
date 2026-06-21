@@ -91,6 +91,21 @@ func TestHandlerReplacesUntrustedForwardingHeaders(t *testing.T) {
 	}
 }
 
+func TestHandlerRejectsDeclaredOversizedBody(t *testing.T) {
+	cfg := proxyConfig()
+	cfg.Limits.MaxBodyBytes = 4
+	h, err := NewHandler(cfg, roundTripFunc(func(*http.Request) (*http.Response, error) { t.Fatal("transport called"); return nil, nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://api.test/api", strings.NewReader("oversized"))
+	recorder := httptest.NewRecorder()
+	h.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d", recorder.Code)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
