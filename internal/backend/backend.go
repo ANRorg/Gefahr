@@ -57,6 +57,30 @@ func (b *Backend) Acquire() func() {
 // Active returns the number of currently assigned requests.
 func (b *Backend) Active() int64 { return b.active.Load() }
 
+// RecordProbe applies thresholded active-health evidence and returns true when
+// the externally visible health state changed.
+func (b *Backend) RecordProbe(success bool, healthyThreshold, unhealthyThreshold int) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	before := b.alive.Load()
+	if success {
+		b.fails = 0
+		b.passes++
+		if !before && b.passes >= healthyThreshold {
+			b.alive.Store(true)
+			b.passes = 0
+		}
+	} else {
+		b.passes = 0
+		b.fails++
+		if before && b.fails >= unhealthyThreshold {
+			b.alive.Store(false)
+			b.fails = 0
+		}
+	}
+	return before != b.alive.Load()
+}
+
 func cloneURL(u *url.URL) *url.URL {
 	if u == nil {
 		return nil
