@@ -3,9 +3,12 @@ package proxy
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/anouar/goproxy/internal/backend"
 	"github.com/anouar/goproxy/internal/balance"
@@ -74,10 +77,34 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if !route.RewriteHost {
 				req.Out.Host = originalHost
 			}
+			req.SetXForwarded()
+			req.Out.Header.Set("Forwarded", forwardedValue(req.In))
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
 			http.Error(w, "bad gateway", http.StatusBadGateway)
 		},
 	}
 	rp.ServeHTTP(w, r)
+}
+
+func forwardedValue(r *http.Request) string {
+	client := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(client); err == nil {
+		client = host
+	}
+	proto := "http"
+	if r.TLS != nil {
+		proto = "https"
+	}
+	return "for=" + quoteForwarded(client) + ";host=" + quoteForwarded(r.Host) + ";proto=" + proto
+}
+
+func quoteForwarded(value string) string {
+	value = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, value)
+	return strconv.Quote(value)
 }

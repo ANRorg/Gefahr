@@ -60,6 +60,37 @@ func TestHandlerReturnsNotFoundForUnmatchedRequest(t *testing.T) {
 	}
 }
 
+func TestHandlerReplacesUntrustedForwardingHeaders(t *testing.T) {
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if got := r.Header.Get("X-Forwarded-For"); got != "192.0.2.10" {
+			t.Fatalf("X-Forwarded-For = %q", got)
+		}
+		if got := r.Header.Get("X-Forwarded-Host"); got != "api.test" {
+			t.Fatalf("X-Forwarded-Host = %q", got)
+		}
+		if got := r.Header.Get("X-Forwarded-Proto"); got != "http" {
+			t.Fatalf("X-Forwarded-Proto = %q", got)
+		}
+		if got := r.Header.Get("Forwarded"); got != `for="192.0.2.10";host="api.test";proto=http` {
+			t.Fatalf("Forwarded = %q", got)
+		}
+		return &http.Response{StatusCode: http.StatusNoContent, Header: make(http.Header), Body: http.NoBody}, nil
+	})
+	h, err := NewHandler(proxyConfig(), transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
+	req.RemoteAddr = "192.0.2.10:4321"
+	req.Header.Set("X-Forwarded-For", "attacker.test")
+	req.Header.Set("Forwarded", "for=attacker.test")
+	recorder := httptest.NewRecorder()
+	h.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d", recorder.Code)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
