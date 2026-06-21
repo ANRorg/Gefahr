@@ -81,6 +81,32 @@ func (b *Backend) RecordProbe(success bool, healthyThreshold, unhealthyThreshold
 	return before != b.alive.Load()
 }
 
+// RecordPassiveFailure removes a live backend after threshold consecutive
+// real-request transport failures. Active probes remain responsible for
+// bringing an ejected backend back into service.
+func (b *Backend) RecordPassiveFailure(threshold int) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !b.alive.Load() {
+		return false
+	}
+	b.passes = 0
+	b.fails++
+	if b.fails < threshold {
+		return false
+	}
+	b.fails = 0
+	b.alive.Store(false)
+	return true
+}
+
+// RecordPassiveSuccess clears consecutive real-request failures.
+func (b *Backend) RecordPassiveSuccess() {
+	b.mu.Lock()
+	b.fails = 0
+	b.mu.Unlock()
+}
+
 func cloneURL(u *url.URL) *url.URL {
 	if u == nil {
 		return nil

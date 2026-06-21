@@ -26,3 +26,17 @@ func TestURLReturnsCopy(t *testing.T) {
 		t.Fatal("backend URL was mutated")
 	}
 }
+
+func TestPassiveFailureEjectsAtThresholdAndSuccessResets(t *testing.T) {
+	b := New("one", &url.URL{Scheme: "http", Host: "example.test"})
+	if b.RecordPassiveFailure(2) {
+		t.Fatal("ejected too early")
+	}
+	b.RecordPassiveSuccess()
+	if b.RecordPassiveFailure(2) {
+		t.Fatal("success did not reset failures")
+	}
+	if !b.RecordPassiveFailure(2) || b.Alive() {
+		t.Fatal("backend was not ejected")
+	}
+}
