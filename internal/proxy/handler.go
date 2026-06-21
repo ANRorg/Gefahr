@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -19,9 +20,10 @@ import (
 )
 
 type runtimePool struct {
-	backends  []*backend.Backend
-	balancers map[string]balance.Balancer
-	retry     config.Retry
+	backends                []*backend.Backend
+	balancers               map[string]balance.Balancer
+	retry                   config.Retry
+	passiveFailureThreshold int
 }
 
 // Handler is an immutable routing snapshot with concurrency-safe backend state.
@@ -42,7 +44,7 @@ func NewHandler(cfg config.Config, transport http.RoundTripper) (*Handler, error
 	}
 	h := &Handler{router: routing.New(cfg.Routes), pools: make(map[string]*runtimePool, len(cfg.Pools)), transport: transport, maxBodyBytes: cfg.Limits.MaxBodyBytes}
 	for name, poolCfg := range cfg.Pools {
-		pool := &runtimePool{retry: poolCfg.Retry, balancers: map[string]balance.Balancer{"round_robin": &balance.RoundRobin{}, "least_connections": &balance.LeastConnections{}}}
+		pool := &runtimePool{retry: poolCfg.Retry, passiveFailureThreshold: poolCfg.Health.UnhealthyThreshold, balancers: map[string]balance.Balancer{"round_robin": &balance.RoundRobin{}, "least_connections": &balance.LeastConnections{}}}
 		for _, backendCfg := range poolCfg.Backends {
 			target, err := url.Parse(backendCfg.URL)
 			if err != nil {
@@ -61,7 +63,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "request body too large")
 		return
 	}
-	if r.Body != nil {
+	if r.Body != nil && r.Body != http.NoBody {
 		r.Body = http.MaxBytesReader(w, r.Body, h.maxBodyBytes)
 	}
 	route, ok := h.router.Match(r.Host, r.URL.Path)
@@ -76,12 +78,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	release := selected.Acquire()
-	defer release()
 
 	target := selected.URL()
 	originalHost := r.Host
 	rp := &httputil.ReverseProxy{
-		Transport: h.transport,
+		Transport: &retryTransport{base: h.transport, pool: pool, balancer: pool.balancers[route.Strategy], first: selected, firstRelease: release, original: r, rewriteHost: route.RewriteHost},
 		Rewrite: func(req *httputil.ProxyRequest) {
 			req.SetURL(target)
 			if !route.RewriteHost {
@@ -103,6 +104,79 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	rp.ServeHTTP(w, r)
+}
+
+type retryTransport struct {
+	base         http.RoundTripper
+	pool         *runtimePool
+	balancer     balance.Balancer
+	first        *backend.Backend
+	firstRelease func()
+	original     *http.Request
+	rewriteHost  bool
+}
+
+func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error) {
+	request := initial
+	selected := t.first
+	release := t.firstRelease
+	attempts := t.pool.retry.MaxAttempts
+	if !canRetry(t.original) {
+		attempts = 1
+	}
+	for attempt := 1; attempt <= attempts; attempt++ {
+		resp, err := t.base.RoundTrip(request)
+		if err == nil {
+			selected.RecordPassiveSuccess()
+			resp.Body = &releaseBody{ReadCloser: resp.Body, release: release}
+			return resp, nil
+		}
+		release()
+		selected.RecordPassiveFailure(t.pool.passiveFailureThreshold)
+		if attempt == attempts {
+			return nil, err
+		}
+		var selectErr error
+		selected, selectErr = t.balancer.Next(t.pool.backends)
+		if selectErr != nil {
+			return nil, selectErr
+		}
+		release = selected.Acquire()
+		request = initial.Clone(initial.Context())
+		if t.original.GetBody != nil {
+			request.Body, err = t.original.GetBody()
+			if err != nil {
+				release()
+				return nil, err
+			}
+		}
+		rewrite := &httputil.ProxyRequest{In: t.original, Out: request}
+		rewrite.SetURL(selected.URL())
+		if !t.rewriteHost {
+			request.Host = t.original.Host
+		}
+	}
+	return nil, errors.New("retry attempts exhausted")
+}
+
+func canRetry(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+		return r.Body == nil || r.Body == http.NoBody || r.GetBody != nil
+	default:
+		return false
+	}
+}
+
+type releaseBody struct {
+	io.ReadCloser
+	release func()
+}
+
+func (b *releaseBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.release()
+	return err
 }
 
 func forwardedValue(r *http.Request) string {

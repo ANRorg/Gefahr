@@ -122,6 +122,35 @@ func TestHandlerMapsUpstreamTimeoutWithoutLeakingError(t *testing.T) {
 	}
 }
 
+func TestHandlerRetriesSafeTransportFailure(t *testing.T) {
+	cfg := proxyConfig()
+	cfg.Pools["api"] = config.Pool{
+		Backends: []config.Backend{{Name: "one", URL: "http://one.test"}, {Name: "two", URL: "http://two.test"}},
+		Health:   config.Health{Path: "/health", Interval: config.Duration(1), Timeout: config.Duration(1), HealthyThreshold: 1, UnhealthyThreshold: 1},
+		Retry:    config.Retry{MaxAttempts: 2},
+	}
+	calls := 0
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return nil, context.DeadlineExceeded
+		}
+		if r.URL.Host != "two.test" {
+			t.Fatalf("retry host = %q", r.URL.Host)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("retried"))}, nil
+	})
+	h, err := NewHandler(cfg, transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	h.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://api.test/api", nil))
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "retried" || calls != 2 {
+		t.Fatalf("response = %d %q, calls=%d", recorder.Code, recorder.Body.String(), calls)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
