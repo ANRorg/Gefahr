@@ -30,6 +30,33 @@ func (r *Router) Candidates(host string) []config.Route {
 	return result
 }
 
+// Match selects the most specific host-compatible path prefix. Exact hosts
+// win ties against catch-all hosts; remaining ties retain configuration order.
+func (r *Router) Match(host, path string) (config.Route, bool) {
+	candidates := r.Candidates(host)
+	var best config.Route
+	found := false
+	for _, route := range candidates {
+		if !pathMatches(route.PathPrefix, path) {
+			continue
+		}
+		if !found || len(route.PathPrefix) > len(best.PathPrefix) || (len(route.PathPrefix) == len(best.PathPrefix) && best.Host == "" && route.Host != "") {
+			best, found = route, true
+		}
+	}
+	return best, found
+}
+
+func pathMatches(prefix, path string) bool {
+	if prefix == "/" {
+		return strings.HasPrefix(path, "/")
+	}
+	if path == prefix {
+		return true
+	}
+	return strings.HasPrefix(path, strings.TrimSuffix(prefix, "/")+"/")
+}
+
 func normalizeHost(host string) string {
 	if parsed, _, err := net.SplitHostPort(host); err == nil {
 		host = parsed
