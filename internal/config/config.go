@@ -1,10 +1,25 @@
 // Package config defines GoProxy's declarative configuration and defaults.
 package config
 
-import "time"
+import (
+	"fmt"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
 
 // Duration wraps time.Duration so configuration can use values such as "5s".
 type Duration time.Duration
+
+// UnmarshalYAML parses a human-readable duration such as "250ms" or "5s".
+func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
+	parsed, err := time.ParseDuration(node.Value)
+	if err != nil {
+		return fmt.Errorf("invalid duration %q: %w", node.Value, err)
+	}
+	*d = Duration(parsed)
+	return nil
+}
 
 // Value returns the standard-library duration value.
 func (d Duration) Value() time.Duration { return time.Duration(d) }
