@@ -40,3 +40,21 @@ func TestPassiveFailureEjectsAtThresholdAndSuccessResets(t *testing.T) {
 		t.Fatal("backend was not ejected")
 	}
 }
+
+func TestProbeAndPassiveFailureThresholdsAreIndependent(t *testing.T) {
+	b := New("one", &url.URL{Scheme: "http", Host: "example.test"})
+	if b.RecordPassiveFailure(2) {
+		t.Fatal("passive failure ejected too early")
+	}
+	b.RecordProbe(true, 1, 2)
+	if !b.RecordPassiveFailure(2) || b.Alive() {
+		t.Fatal("successful probe erased passive failure evidence")
+	}
+
+	b.SetAlive(true)
+	b.RecordProbe(false, 1, 2)
+	b.RecordPassiveSuccess()
+	if !b.RecordProbe(false, 1, 2) || b.Alive() {
+		t.Fatal("passive success erased active probe failure evidence")
+	}
+}

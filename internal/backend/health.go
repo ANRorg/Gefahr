@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 )
@@ -67,6 +68,9 @@ func (c *Checker) check(ctx context.Context, b *Backend) {
 		resp, requestErr := client.Do(req)
 		if requestErr == nil {
 			success = resp.StatusCode >= 200 && resp.StatusCode < 300
+			if _, readErr := io.CopyN(io.Discard, resp.Body, (4<<10)+1); readErr != nil && readErr != io.EOF {
+				success = false
+			}
 			resp.Body.Close()
 		}
 	}

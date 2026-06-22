@@ -9,13 +9,14 @@ import (
 
 // Backend represents one configured upstream and its mutable runtime state.
 type Backend struct {
-	name   string
-	url    *url.URL
-	alive  atomic.Bool
-	active atomic.Int64
-	mu     sync.Mutex
-	fails  int
-	passes int
+	name         string
+	url          *url.URL
+	alive        atomic.Bool
+	active       atomic.Int64
+	mu           sync.Mutex
+	probeFails   int
+	probePasses  int
+	passiveFails int
 }
 
 // New creates an initially healthy backend.
@@ -37,7 +38,7 @@ func (b *Backend) Alive() bool { return b.alive.Load() }
 // SetAlive changes eligibility and clears transition counters.
 func (b *Backend) SetAlive(alive bool) {
 	b.mu.Lock()
-	b.fails, b.passes = 0, 0
+	b.probeFails, b.probePasses, b.passiveFails = 0, 0, 0
 	b.alive.Store(alive)
 	b.mu.Unlock()
 }
@@ -64,18 +65,19 @@ func (b *Backend) RecordProbe(success bool, healthyThreshold, unhealthyThreshold
 	defer b.mu.Unlock()
 	before := b.alive.Load()
 	if success {
-		b.fails = 0
-		b.passes++
-		if !before && b.passes >= healthyThreshold {
+		b.probeFails = 0
+		b.probePasses++
+		if !before && b.probePasses >= healthyThreshold {
 			b.alive.Store(true)
-			b.passes = 0
+			b.probePasses = 0
+			b.passiveFails = 0
 		}
 	} else {
-		b.passes = 0
-		b.fails++
-		if before && b.fails >= unhealthyThreshold {
+		b.probePasses = 0
+		b.probeFails++
+		if before && b.probeFails >= unhealthyThreshold {
 			b.alive.Store(false)
-			b.fails = 0
+			b.probeFails = 0
 		}
 	}
 	return before != b.alive.Load()
@@ -90,12 +92,11 @@ func (b *Backend) RecordPassiveFailure(threshold int) bool {
 	if !b.alive.Load() {
 		return false
 	}
-	b.passes = 0
-	b.fails++
-	if b.fails < threshold {
+	b.passiveFails++
+	if b.passiveFails < threshold {
 		return false
 	}
-	b.fails = 0
+	b.passiveFails = 0
 	b.alive.Store(false)
 	return true
 }
@@ -103,7 +104,7 @@ func (b *Backend) RecordPassiveFailure(threshold int) bool {
 // RecordPassiveSuccess clears consecutive real-request failures.
 func (b *Backend) RecordPassiveSuccess() {
 	b.mu.Lock()
-	b.fails = 0
+	b.passiveFails = 0
 	b.mu.Unlock()
 }
 
