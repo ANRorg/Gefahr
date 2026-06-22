@@ -11,7 +11,7 @@ and [architecture overview](docs/architecture.md).
 
 ## Quick start
 
-Requirements: Go 1.25 or Docker with Compose.
+Requirements: Go 1.25.11 or Docker with Compose.
 
 Run two fixture backends in separate terminals:
 
@@ -44,8 +44,9 @@ backend URLs, then pass it with `-config`.
 
 - `SIGHUP` validates and atomically reloads routes, pools, policies, logging,
   and TLS certificate contents. Existing requests finish on their old snapshot.
-- Listener addresses, listener count, TLS mode, and the admin address require a
-  restart because bound socket changes cannot be atomic.
+- Listener addresses, listener count, TLS mode, the admin address, public
+  server timeouts, shutdown timeout, and maximum header size require a restart.
+  The per-listener connection limit is also restart-only.
 - `SIGINT` and `SIGTERM` stop acceptance and drain requests within
   `timeouts.shutdown`.
 - The admin listener should remain private. It exposes `/livez`, `/readyz`, and
@@ -61,6 +62,8 @@ make test
 make test-race
 make check
 make test-integration # requires permission to open local TCP listeners
+docker compose up --build -d
+make load-check      # exercises the running demonstration stack
 ```
 
 Every repository commit is intentionally small and independently testable.
@@ -81,4 +84,3 @@ caching, cache revalidation, `Vary` variants, a mutation API, or per-route
 authentication. The response write timeout limits very long-lived streams;
 WebSocket-specific behavior is not an acceptance target. See
 [security and limitations](docs/security.md).
-
