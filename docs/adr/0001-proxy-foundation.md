@@ -7,7 +7,7 @@ Accepted.
 ## Decision
 
 The data plane uses `net/http` and `net/http/httputil.ReverseProxy`. The admin
-plane uses `chi`. GoProxy owns routing, balancing, health, caching,
+plane uses `chi`. Gefahr owns routing, balancing, health, caching,
 configuration, limits, telemetry, and lifecycle behavior.
 
 The guide under `docs/legacy-guide` remains useful background, but its ban on
@@ -24,4 +24,3 @@ library.
   selection, retry rules, cache policy, bounded resources, and operations.
 - HTTP/3, ACME, distributed caching, service discovery, and a mutable admin API
   are outside version 1.
-

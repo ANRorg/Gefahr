@@ -26,7 +26,7 @@ go run ./test/fixtures/backend -address :9002 -name backend-2
 Then run the proxy:
 
 ```sh
-go run ./cmd/Gefahr -config configs/proxy.example.yaml
+go run ./cmd/goproxy -config configs/proxy.example.yaml
 curl -H 'Host: localhost' http://127.0.0.1:8080/
 curl http://127.0.0.1:9090/readyz
 curl http://127.0.0.1:9090/metrics
@@ -40,7 +40,7 @@ curl http://localhost:8080/
 ```
 
 The production image runs its health check against the private `/readyz`
-endpoint by invoking the GoProxy binary's bounded `-healthcheck` mode; it does
+endpoint by invoking the `goproxy` binary's bounded `-healthcheck` mode; it does
 not add a shell or HTTP utility to the distroless image.
 
 ## Configuration and operation
@@ -101,4 +101,4 @@ WebSocket-specific behavior is not an acceptance target. See
 
 ## License
 
-GoProxy is licensed under the [Apache License 2.0](LICENSE).
+Gefahr is licensed under the [Apache License 2.0](LICENSE).

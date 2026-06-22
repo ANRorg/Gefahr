@@ -11,7 +11,7 @@ The container image checks `/readyz` with `goproxy -healthcheck URL`. This mode
 uses direct HTTP connections, rejects redirects and non-200 responses, and
 exits within five seconds.
 
-Bind the admin listener to loopback or a private management network. GoProxy
+Bind the admin listener to loopback or a private management network. Gefahr
 does not authenticate admin endpoints.
 
 ## Reload

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to GoProxy are documented here. The project follows
+All notable changes to Gefahr are documented here. The project follows
 Semantic Versioning.
 
 ## [Unreleased]

@@ -23,6 +23,6 @@ investigation; a single before/after heap delta is not proof of a leak because
 Go retains heap spans for reuse.
 
 After stopping the stack, verify that the proxy exits within the configured
-shutdown timeout and that no GoProxy containers remain. Record the command
+shutdown timeout and that no Gefahr Compose containers remain. Record the command
 output in the release or CI evidence rather than committing machine-specific
 throughput and memory numbers to this document.
