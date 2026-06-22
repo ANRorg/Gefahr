@@ -27,10 +27,11 @@ should provide a termination grace period longer than that value.
 
 Each JSON request log includes request ID, route, backend, status, latency,
 attempt count, and cache result. Use the returned `X-Request-ID` to correlate a
-client failure. A `503` means no healthy backend was eligible; `502` indicates a
-transport failure; `504` indicates the upstream deadline elapsed.
+client failure. A `503` means no healthy backend was eligible or the configured
+request-admission limit was reached; inspect the JSON error `code` to distinguish
+those cases. `502` indicates a transport failure; `504` indicates the upstream
+deadline elapsed.
 
 Monitor backend health, retry rate, 5xx rate, cache outcomes, request latency,
 process memory, and goroutine count. Repeated backend flapping usually means
 probe thresholds are too aggressive or the health endpoint is not representative.
-
