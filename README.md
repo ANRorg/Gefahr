@@ -1,11 +1,11 @@
-# GoProxy
+# Gefahr
 
-GoProxy is a configurable Go reverse proxy with host/path routing, round-robin
+Gefahr is a configurable Go reverse proxy with host/path routing, round-robin
 and least-connections balancing, active and passive health tracking, bounded
 response caching, static TLS termination, structured logs, and Prometheus
 metrics.
 
-The data plane uses Go's maintained `httputil.ReverseProxy`; GoProxy owns the
+The data plane uses Go's maintained `httputil.ReverseProxy`; Gefahr owns the
 policy around it. See [the architecture decision](docs/adr/0001-proxy-foundation.md)
 and [architecture overview](docs/architecture.md).
 
@@ -23,7 +23,7 @@ go run ./test/fixtures/backend -address :9002 -name backend-2
 Then run the proxy:
 
 ```sh
-go run ./cmd/goproxy -config configs/proxy.example.yaml
+go run ./cmd/Gefahr -config configs/proxy.example.yaml
 curl -H 'Host: localhost' http://127.0.0.1:8080/
 curl http://127.0.0.1:9090/readyz
 curl http://127.0.0.1:9090/metrics
