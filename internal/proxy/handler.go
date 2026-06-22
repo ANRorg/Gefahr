@@ -3,6 +3,8 @@ package proxy
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -37,10 +39,22 @@ type Handler struct {
 	cache        *responsecache.Cache
 	cacheTTL     time.Duration
 	maxCacheBody int64
+	observer     Observer
 }
 
+// Observer receives one bounded-cardinality record after every public request.
+type Observer interface {
+	ObserveRequest(requestID, route, method, path, backend string, status, attempts int, cacheResult string, duration time.Duration)
+}
+
+// Option customizes a Handler without expanding its constructor over time.
+type Option func(*Handler)
+
+// WithObserver installs request telemetry and logging observation.
+func WithObserver(observer Observer) Option { return func(h *Handler) { h.observer = observer } }
+
 // NewHandler compiles validated configuration into a request handler.
-func NewHandler(cfg config.Config, transport http.RoundTripper) (*Handler, error) {
+func NewHandler(cfg config.Config, transport http.RoundTripper, options ...Option) (*Handler, error) {
 	if err := config.Validate(cfg); err != nil {
 		return nil, err
 	}
@@ -59,11 +73,25 @@ func NewHandler(cfg config.Config, transport http.RoundTripper) (*Handler, error
 		}
 		h.pools[name] = pool
 	}
+	for _, option := range options {
+		option(h)
+	}
 	return h, nil
 }
 
 // ServeHTTP routes and streams one request through a selected healthy backend.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	requestID := newRequestID()
+	w.Header().Set("X-Request-ID", requestID)
+	status := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	w = status
+	routeName, backendName, cacheResult, attempts := "unmatched", "", "bypass", 0
+	defer func() {
+		if h.observer != nil {
+			h.observer.ObserveRequest(requestID, routeName, r.Method, r.URL.Path, backendName, status.status, attempts, cacheResult, time.Since(started))
+		}
+	}()
 	if r.ContentLength > h.maxBodyBytes {
 		writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "request body too large")
 		return
@@ -77,14 +105,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pool := h.pools[route.Pool]
+	routeName = route.Name
 	cacheKey := ""
 	if route.Cache.Enabled {
 		if eligible, _ := responsecache.RequestEligible(r); eligible {
 			cacheKey = responsecache.Key(r)
 			if cached, hit := h.cache.Get(cacheKey); hit {
+				cacheResult = "hit"
 				writeCached(w, cached)
 				return
 			}
+			cacheResult = "miss"
 		}
 	}
 	selected, err := pool.balancers[route.Strategy].Next(pool.backends)
@@ -93,11 +124,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	release := selected.Acquire()
+	backendName = selected.Name()
+	attempts = 1
 
 	target := selected.URL()
 	originalHost := r.Host
+	retrying := &retryTransport{base: h.transport, pool: pool, balancer: pool.balancers[route.Strategy], first: selected, firstRelease: release, original: r, rewriteHost: route.RewriteHost, attempts: 1, lastBackend: selected.Name()}
+	defer func() { attempts, backendName = retrying.attempts, retrying.lastBackend }()
 	rp := &httputil.ReverseProxy{
-		Transport: &retryTransport{base: h.transport, pool: pool, balancer: pool.balancers[route.Strategy], first: selected, firstRelease: release, original: r, rewriteHost: route.RewriteHost},
+		Transport: retrying,
 		Rewrite: func(req *httputil.ProxyRequest) {
 			req.SetURL(target)
 			if !route.RewriteHost {
@@ -181,6 +216,8 @@ type retryTransport struct {
 	firstRelease func()
 	original     *http.Request
 	rewriteHost  bool
+	attempts     int
+	lastBackend  string
 }
 
 func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error) {
@@ -209,6 +246,8 @@ func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error
 			return nil, selectErr
 		}
 		release = selected.Acquire()
+		t.attempts++
+		t.lastBackend = selected.Name()
 		request = initial.Clone(initial.Context())
 		if t.original.GetBody != nil {
 			request.Body, err = t.original.GetBody()
@@ -224,6 +263,37 @@ func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error
 		}
 	}
 	return nil, errors.New("retry attempts exhausted")
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+	wrote  bool
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	if w.wrote {
+		return
+	}
+	w.wrote, w.status = true, status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusWriter) Write(p []byte) (int, error) {
+	if !w.wrote {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func newRequestID() string {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 16)
+	}
+	return hex.EncodeToString(bytes[:])
 }
 
 func canRetry(r *http.Request) bool {

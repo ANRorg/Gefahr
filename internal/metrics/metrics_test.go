@@ -10,7 +10,7 @@ import (
 
 func TestHandlerExposesRequestAndBackendMetrics(t *testing.T) {
 	m := New()
-	m.ObserveRequest("api", http.MethodGet, 200, 2, "hit", 25*time.Millisecond)
+	m.ObserveRequest("request-id", "api", http.MethodGet, "/items", "one", 200, 2, "hit", 25*time.Millisecond)
 	m.SetBackendHealth("api", "one", true)
 	m.SetBackendActive("api", "one", 3)
 	recorder := httptest.NewRecorder()

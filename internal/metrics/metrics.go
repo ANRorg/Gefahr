@@ -40,7 +40,7 @@ func New() *Metrics {
 func (m *Metrics) Handler() http.Handler { return http.HandlerFunc(m.serveHTTP) }
 
 // ObserveRequest records one completed public request.
-func (m *Metrics) ObserveRequest(route, method string, status, attempts int, cacheResult string, duration time.Duration) {
+func (m *Metrics) ObserveRequest(_, route, method, _, _ string, status, attempts int, cacheResult string, duration time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.requests[requestKey{route, method, status}]++
