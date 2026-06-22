@@ -13,7 +13,6 @@ test-integration:
 	go test -tags=integration ./test/integration
 
 check:
-	test -z "$$(gofmt -l .)"
+	test -z "$$(gofmt -l $$(git ls-files '*.go'))"
 	go vet ./...
 	go test -race ./...
-
