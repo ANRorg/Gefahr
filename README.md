@@ -62,11 +62,14 @@ make test
 make test-race
 make check
 make test-integration # requires permission to open local TCP listeners
+make acceptance       # static, race, unit, and real-socket integration checks
 docker compose up --build -d
 make load-check      # exercises the running demonstration stack
 ```
 
 Every repository commit is intentionally small and independently testable.
+See the [release acceptance procedure](docs/release-acceptance.md) for the
+complete final gate and expected evidence.
 
 ## Security model and limitations
 
