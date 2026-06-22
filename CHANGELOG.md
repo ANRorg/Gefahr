@@ -5,6 +5,8 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-06-22
+
 ### Fixed
 
 - Parse Cache-Control directive lists without splitting commas inside quoted
