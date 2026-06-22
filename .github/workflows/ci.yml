@@ -23,6 +23,12 @@ jobs:
           cache-dependency-path: go.sum
       - name: Verify source and tests
         run: make acceptance
+      - name: Scan known Go vulnerabilities
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+          go-package: ./...
+          repo-checkout: false
       - name: Build release binary
         run: make build VERSION=ci COMMIT=${GITHUB_SHA::12}
 
