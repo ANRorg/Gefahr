@@ -4,6 +4,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"strconv"
@@ -46,7 +47,8 @@ func main() {
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Fixture-Backend", *name)
-		fmt.Fprintf(w, "%s %s %s\n", *name, r.Method, r.URL.RequestURI())
+		safeURI := html.EscapeString(r.URL.RequestURI())
+		fmt.Fprintf(w, "%s %s %s\n", *name, r.Method, safeURI)
 	})
 	log.Printf("fixture %s listening on %s", *name, *address)
 	log.Fatal(http.ListenAndServe(*address, mux))
