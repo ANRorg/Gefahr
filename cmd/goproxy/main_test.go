@@ -40,6 +40,15 @@ func TestRunHealthcheckRequiresOKResponse(t *testing.T) {
 	}
 }
 
+func TestVersionStringIncludesBuildMetadata(t *testing.T) {
+	previousVersion, previousCommit := version, commit
+	t.Cleanup(func() { version, commit = previousVersion, previousCommit })
+	version, commit = "v1.0.0", "abc1234"
+	if got := versionString(); got != "goproxy version=v1.0.0 commit=abc1234" {
+		t.Fatalf("version = %q", got)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {

@@ -24,6 +24,11 @@ import (
 	"github.com/anouar/goproxy/internal/server"
 )
 
+var (
+	version = "dev"
+	commit  = "unknown"
+)
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -35,8 +40,13 @@ func run(args []string) error {
 	flags := flag.NewFlagSet("goproxy", flag.ContinueOnError)
 	configPath := flags.String("config", "configs/proxy.example.yaml", "path to YAML configuration")
 	healthcheck := flags.String("healthcheck", "", "check an HTTP readiness URL and exit")
+	showVersion := flags.Bool("version", false, "print version information and exit")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *showVersion {
+		fmt.Println(versionString())
+		return nil
 	}
 	if *healthcheck != "" {
 		client := &http.Client{
@@ -103,6 +113,10 @@ func run(args []string) error {
 	err = server.Run(ctx, managed, cfg.Timeouts.Shutdown.Value())
 	live.Store(false)
 	return err
+}
+
+func versionString() string {
+	return fmt.Sprintf("goproxy version=%s commit=%s", version, commit)
 }
 
 func runHealthcheck(client *http.Client, target string) error {

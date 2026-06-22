@@ -1,7 +1,11 @@
 .PHONY: build test test-race test-integration test-integration-race load-check check acceptance
 
+VERSION ?= dev
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+LDFLAGS = -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
+
 build:
-	go build -trimpath -o bin/goproxy ./cmd/goproxy
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/goproxy ./cmd/goproxy
 
 test:
 	go test ./...

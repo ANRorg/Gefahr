@@ -3,6 +3,9 @@ services:
     build:
       context: .
       target: runtime
+      args:
+        VERSION: ${GOPROXY_VERSION:-dev}
+        COMMIT: ${GOPROXY_COMMIT:-unknown}
     command: ["-config", "/etc/goproxy/proxy.yaml"]
     configs:
       - source: proxy_config
@@ -34,4 +37,3 @@ services:
 configs:
   proxy_config:
     file: ./configs/proxy.compose.yaml
-

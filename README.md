@@ -71,6 +71,10 @@ docker compose up --build -d
 make load-check      # exercises the running demonstration stack
 ```
 
+Release builds can inject identity with `make build VERSION=v1.0.0` or with
+`GOPROXY_VERSION` and `GOPROXY_COMMIT` for Compose. Run `goproxy -version` to
+inspect the embedded values.
+
 Every repository commit is intentionally small and independently testable.
 See the [release acceptance procedure](docs/release-acceptance.md) for the
 complete final gate and expected evidence.
