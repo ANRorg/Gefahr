@@ -107,10 +107,12 @@ type Timeouts struct {
 	ResponseHeader Duration `yaml:"response_header"`
 }
 
-// Limits bounds request metadata and body sizes.
+// Limits bounds connections, admitted requests, metadata, and body sizes.
 type Limits struct {
-	MaxHeaderBytes int   `yaml:"max_header_bytes"`
-	MaxBodyBytes   int64 `yaml:"max_body_bytes"`
+	MaxHeaderBytes        int   `yaml:"max_header_bytes"`
+	MaxBodyBytes          int64 `yaml:"max_body_bytes"`
+	MaxConcurrentRequests int   `yaml:"max_concurrent_requests"`
+	MaxConnections        int   `yaml:"max_connections"`
 }
 
 // Cache controls the process-wide bounded response cache.
@@ -132,7 +134,7 @@ func Default() Config {
 		Admin:     Admin{Address: "127.0.0.1:9090"},
 		Pools:     make(map[string]Pool),
 		Timeouts:  Timeouts{ReadHeader: Duration(10 * time.Second), ReadBody: Duration(30 * time.Second), Write: Duration(2 * time.Minute), Idle: Duration(60 * time.Second), Shutdown: Duration(30 * time.Second), Dial: Duration(5 * time.Second), ResponseHeader: Duration(30 * time.Second)},
-		Limits:    Limits{MaxHeaderBytes: 16 << 10, MaxBodyBytes: 10 << 20},
+		Limits:    Limits{MaxHeaderBytes: 16 << 10, MaxBodyBytes: 10 << 20, MaxConcurrentRequests: 1024, MaxConnections: 4096},
 		Cache:     Cache{MaxEntries: 1000, MaxBytes: 64 << 20, DefaultTTL: Duration(30 * time.Second)},
 		Logging:   Logging{Level: "info"},
 	}

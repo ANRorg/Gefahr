@@ -54,3 +54,17 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestLoadRejectsTrailingYAMLDocument(t *testing.T) {
+	_, err := Load(strings.NewReader(validYAML + "\n---\nlogging:\n  level: debug\n"))
+	if err == nil || !strings.Contains(err.Error(), "multiple YAML documents") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRejectsOversizedInput(t *testing.T) {
+	_, err := Load(strings.NewReader(strings.Repeat("#", (4<<20)+1)))
+	if err == nil || !strings.Contains(err.Error(), "size exceeds") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
