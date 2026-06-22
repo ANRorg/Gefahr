@@ -111,8 +111,8 @@ func hasDirective(value, name string) bool {
 func directiveSeconds(value, name string) (seconds int64, present, valid bool) {
 	var found bool
 	for _, part := range strings.Split(value, ",") {
-		pieces := strings.SplitN(strings.TrimSpace(part), "=", 2)
-		if pieces[0] != name {
+		pieces := strings.SplitN(part, "=", 2)
+		if strings.TrimSpace(pieces[0]) != name {
 			continue
 		}
 		if found {
