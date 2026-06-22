@@ -21,7 +21,7 @@ type Managed struct {
 
 // NewPublic creates a bounded public HTTP server.
 func NewPublic(listener config.Listener, cfg config.Config, handler http.Handler, tlsConfig *tls.Config) Managed {
-	return Managed{HTTP: &http.Server{Addr: listener.Address, Handler: handler, ReadHeaderTimeout: cfg.Timeouts.ReadHeader.Value(), IdleTimeout: cfg.Timeouts.Idle.Value(), WriteTimeout: 0, MaxHeaderBytes: cfg.Limits.MaxHeaderBytes}, TLS: tlsConfig}
+	return Managed{HTTP: &http.Server{Addr: listener.Address, Handler: handler, ReadHeaderTimeout: cfg.Timeouts.ReadHeader.Value(), ReadTimeout: cfg.Timeouts.ReadBody.Value(), WriteTimeout: cfg.Timeouts.Write.Value(), IdleTimeout: cfg.Timeouts.Idle.Value(), MaxHeaderBytes: cfg.Limits.MaxHeaderBytes}, TLS: tlsConfig}
 }
 
 // NewAdmin creates a loopback-oriented operational HTTP server.

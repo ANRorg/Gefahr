@@ -88,7 +88,7 @@ func Validate(cfg Config) error {
 			errs = append(errs, fmt.Errorf("pools.%s.retry.max_attempts must be 1 or 2", name))
 		}
 	}
-	if cfg.Timeouts.ReadHeader <= 0 || cfg.Timeouts.Idle <= 0 || cfg.Timeouts.Shutdown <= 0 || cfg.Timeouts.Dial <= 0 || cfg.Timeouts.ResponseHeader <= 0 {
+	if cfg.Timeouts.ReadHeader <= 0 || cfg.Timeouts.ReadBody <= 0 || cfg.Timeouts.Write <= 0 || cfg.Timeouts.Idle <= 0 || cfg.Timeouts.Shutdown <= 0 || cfg.Timeouts.Dial <= 0 || cfg.Timeouts.ResponseHeader <= 0 {
 		errs = append(errs, errors.New("all timeouts must be positive"))
 	}
 	if cfg.Limits.MaxHeaderBytes <= 0 || cfg.Limits.MaxBodyBytes <= 0 {

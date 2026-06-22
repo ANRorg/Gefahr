@@ -99,6 +99,8 @@ type Retry struct {
 // Timeouts bounds public and upstream network operations.
 type Timeouts struct {
 	ReadHeader     Duration `yaml:"read_header"`
+	ReadBody       Duration `yaml:"read_body"`
+	Write          Duration `yaml:"write"`
 	Idle           Duration `yaml:"idle"`
 	Shutdown       Duration `yaml:"shutdown"`
 	Dial           Duration `yaml:"dial"`
@@ -129,7 +131,7 @@ func Default() Config {
 		Listeners: []Listener{{Address: ":8080"}},
 		Admin:     Admin{Address: "127.0.0.1:9090"},
 		Pools:     make(map[string]Pool),
-		Timeouts:  Timeouts{ReadHeader: Duration(10 * time.Second), Idle: Duration(60 * time.Second), Shutdown: Duration(30 * time.Second), Dial: Duration(5 * time.Second), ResponseHeader: Duration(30 * time.Second)},
+		Timeouts:  Timeouts{ReadHeader: Duration(10 * time.Second), ReadBody: Duration(30 * time.Second), Write: Duration(2 * time.Minute), Idle: Duration(60 * time.Second), Shutdown: Duration(30 * time.Second), Dial: Duration(5 * time.Second), ResponseHeader: Duration(30 * time.Second)},
 		Limits:    Limits{MaxHeaderBytes: 16 << 10, MaxBodyBytes: 10 << 20},
 		Cache:     Cache{MaxEntries: 1000, MaxBytes: 64 << 20, DefaultTTL: Duration(30 * time.Second)},
 		Logging:   Logging{Level: "info"},

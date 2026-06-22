@@ -27,6 +27,8 @@ pools:
       max_attempts: 2
 timeouts:
   read_header: 10s
+  read_body: 30s
+  write: 2m
   idle: 60s
   shutdown: 30s
   dial: 5s
@@ -40,4 +42,3 @@ cache:
   default_ttl: 30s
 logging:
   level: info
-
