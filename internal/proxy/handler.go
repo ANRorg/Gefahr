@@ -123,13 +123,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "no_healthy_upstream", "no healthy upstream")
 		return
 	}
-	release := selected.Acquire()
+	release := h.acquire(route.Pool, selected)
 	backendName = selected.Name()
 	attempts = 1
 
 	target := selected.URL()
 	originalHost := r.Host
-	retrying := &retryTransport{base: h.transport, pool: pool, balancer: pool.balancers[route.Strategy], first: selected, firstRelease: release, original: r, rewriteHost: route.RewriteHost, attempts: 1, lastBackend: selected.Name()}
+	retrying := &retryTransport{base: h.transport, poolName: route.Pool, pool: pool, balancer: pool.balancers[route.Strategy], first: selected, firstRelease: release, original: r, rewriteHost: route.RewriteHost, attempts: 1, lastBackend: selected.Name(), handler: h}
 	defer func() { attempts, backendName = retrying.attempts, retrying.lastBackend }()
 	rp := &httputil.ReverseProxy{
 		Transport: retrying,
@@ -210,6 +210,7 @@ func (b *cacheCaptureBody) Read(p []byte) (int, error) {
 
 type retryTransport struct {
 	base         http.RoundTripper
+	poolName     string
 	pool         *runtimePool
 	balancer     balance.Balancer
 	first        *backend.Backend
@@ -218,6 +219,7 @@ type retryTransport struct {
 	rewriteHost  bool
 	attempts     int
 	lastBackend  string
+	handler      *Handler
 }
 
 func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error) {
@@ -245,7 +247,7 @@ func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error
 		if selectErr != nil {
 			return nil, selectErr
 		}
-		release = selected.Acquire()
+		release = t.handler.acquire(t.poolName, selected)
 		t.attempts++
 		t.lastBackend = selected.Name()
 		request = initial.Clone(initial.Context())
