@@ -57,3 +57,25 @@ func withHeader(r *http.Request, name, value string) *http.Request {
 	r.Header.Set(name, value)
 	return r
 }
+
+func TestEvaluateHandlesSpacingInCacheControl(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://api.test/items", nil)
+	tests := []struct {
+		name         string
+		cacheControl string
+		wantTTL      time.Duration
+	}{
+		{"spaces around equals", "public, max-age = 60", time.Minute},
+		{"space after equals", "public, max-age= 90", 90 * time.Second},
+		{"space before equals", "public, max-age =120", 2 * time.Minute},
+		{"s-maxage spaces", "public, s-maxage = 180, max-age=30", 3 * time.Minute},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			decision := Evaluate(req, http.StatusOK, http.Header{"Cache-Control": {tc.cacheControl}}, time.Second)
+			if !decision.Cacheable || decision.TTL != tc.wantTTL {
+				t.Fatalf("decision = %#v; want TTL %s", decision, tc.wantTTL)
+			}
+		})
+	}
+}

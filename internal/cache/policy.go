@@ -108,11 +108,12 @@ func hasDirective(value, name string) bool {
 	return false
 }
 
+// directiveSeconds extracts and parses a numeric directive value from a comma-separated directive string. It locates the directive matching the given name and returns its parsed integer value. Returns (seconds, present, valid) where present is true if the directive was found, and valid is true if the directive was found and has a valid non-negative integer value.
 func directiveSeconds(value, name string) (seconds int64, present, valid bool) {
 	var found bool
 	for _, part := range strings.Split(value, ",") {
-		pieces := strings.SplitN(strings.TrimSpace(part), "=", 2)
-		if pieces[0] != name {
+		pieces := strings.SplitN(part, "=", 2)
+		if strings.TrimSpace(pieces[0]) != name {
 			continue
 		}
 		if found {
