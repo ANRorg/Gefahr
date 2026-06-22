@@ -3,8 +3,10 @@ package server
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/anouar/goproxy/internal/config"
 )
@@ -30,6 +32,21 @@ func LoadCertificate(cfg config.TLSConfig) (*tls.Certificate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load TLS certificate: %w", err)
 	}
+	if len(certificate.Certificate) == 0 {
+		return nil, fmt.Errorf("load TLS certificate: certificate chain is empty")
+	}
+	leaf, err := x509.ParseCertificate(certificate.Certificate[0])
+	if err != nil {
+		return nil, fmt.Errorf("parse TLS leaf certificate: %w", err)
+	}
+	now := time.Now()
+	if now.Before(leaf.NotBefore) {
+		return nil, fmt.Errorf("TLS certificate is not valid before %s", leaf.NotBefore.Format(time.RFC3339))
+	}
+	if !now.Before(leaf.NotAfter) {
+		return nil, fmt.Errorf("TLS certificate expired at %s", leaf.NotAfter.Format(time.RFC3339))
+	}
+	certificate.Leaf = leaf
 	return &certificate, nil
 }
 
