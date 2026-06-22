@@ -1,0 +1,37 @@
+services:
+  proxy:
+    build:
+      context: .
+      target: runtime
+    command: ["-config", "/etc/goproxy/proxy.yaml"]
+    configs:
+      - source: proxy_config
+        target: /etc/goproxy/proxy.yaml
+    ports:
+      - "8080:8080"
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - backend-1
+      - backend-2
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  backend-1:
+    build:
+      context: .
+      target: fixture
+    command: ["-address", ":9001", "-name", "backend-1"]
+
+  backend-2:
+    build:
+      context: .
+      target: fixture
+    command: ["-address", ":9002", "-name", "backend-2"]
+
+configs:
+  proxy_config:
+    file: ./configs/proxy.compose.yaml
+
