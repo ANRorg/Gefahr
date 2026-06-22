@@ -35,6 +35,42 @@ func TestDynamicSwapsCompleteHandler(t *testing.T) {
 	}
 }
 
+func TestInheritBackendHealthPreservesOnlyUnchangedBackend(t *testing.T) {
+	previous, _ := NewHandler(proxyConfig(), staticResponse("old"))
+	previous.pools["api"].backends[0].SetAlive(false)
+	next, _ := NewHandler(proxyConfig(), staticResponse("new"))
+	next.InheritBackendHealth(previous)
+	if next.pools["api"].backends[0].Alive() {
+		t.Fatal("unchanged backend lost its unhealthy state")
+	}
+
+	changedConfig := proxyConfig()
+	pool := changedConfig.Pools["api"]
+	pool.Backends[0].URL = "http://replacement.test"
+	changedConfig.Pools["api"] = pool
+	changed, _ := NewHandler(changedConfig, staticResponse("changed"))
+	changed.InheritBackendHealth(previous)
+	if !changed.pools["api"].backends[0].Alive() {
+		t.Fatal("changed backend inherited stale health")
+	}
+}
+
+func TestHealthClientDoesNotFollowRedirects(t *testing.T) {
+	calls := 0
+	client := newHealthClient(roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {"http://other.test/health"}}, Body: http.NoBody}, nil
+	}))
+	response, err := client.Get("http://backend.test/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if calls != 1 || response.StatusCode != http.StatusFound {
+		t.Fatalf("calls=%d status=%d", calls, response.StatusCode)
+	}
+}
+
 func staticResponse(body string) roundTripFunc {
 	return func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil

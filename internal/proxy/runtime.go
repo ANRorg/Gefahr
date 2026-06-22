@@ -53,6 +53,28 @@ func (h *Handler) Ready() bool {
 	return true
 }
 
+// InheritBackendHealth preserves eligibility for unchanged backends across a
+// configuration reload. Changed names or URLs intentionally start fresh.
+func (h *Handler) InheritBackendHealth(previous *Handler) {
+	if previous == nil {
+		return
+	}
+	for poolName, pool := range h.pools {
+		oldPool := previous.pools[poolName]
+		if oldPool == nil {
+			continue
+		}
+		for _, candidate := range pool.backends {
+			for _, old := range oldPool.backends {
+				if candidate.Name() == old.Name() && candidate.URL().String() == old.URL().String() {
+					candidate.SetAlive(old.Alive())
+					break
+				}
+			}
+		}
+	}
+}
+
 // StartHealthChecks starts one active checker per pool and returns immediately.
 func (h *Handler) StartHealthChecks(ctx context.Context, cfg config.Config) {
 	observer, _ := h.observer.(BackendObserver)
@@ -65,7 +87,7 @@ func (h *Handler) StartHealthChecks(ctx context.Context, cfg config.Config) {
 		}
 		checker := &backend.Checker{
 			Backends: pool.backends,
-			Client:   &http.Client{Transport: h.transport},
+			Client:   newHealthClient(h.transport),
 			Policy:   backend.HealthPolicy{Path: policy.Path, Interval: policy.Interval.Value(), Timeout: policy.Timeout.Value(), HealthyThreshold: policy.HealthyThreshold, UnhealthyThreshold: policy.UnhealthyThreshold},
 		}
 		if observer != nil {
@@ -76,6 +98,12 @@ func (h *Handler) StartHealthChecks(ctx context.Context, cfg config.Config) {
 		}
 		go checker.Run(ctx)
 	}
+}
+
+func newHealthClient(transport http.RoundTripper) *http.Client {
+	return &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
 }
 
 func (h *Handler) acquire(pool string, candidate *backend.Backend) func() {
