@@ -5,12 +5,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/anouar/goproxy/internal/admin"
 	"github.com/anouar/goproxy/internal/app"
@@ -30,8 +34,21 @@ func main() {
 func run(args []string) error {
 	flags := flag.NewFlagSet("goproxy", flag.ContinueOnError)
 	configPath := flags.String("config", "configs/proxy.example.yaml", "path to YAML configuration")
+	healthcheck := flags.String("healthcheck", "", "check an HTTP readiness URL and exit")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *healthcheck != "" {
+		client := &http.Client{
+			Timeout: 5 * time.Second,
+			Transport: &http.Transport{
+				Proxy:                 nil,
+				DialContext:           (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
+				ResponseHeaderTimeout: 2 * time.Second,
+			},
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		}
+		return runHealthcheck(client, *healthcheck)
 	}
 	cfg, err := config.LoadFile(*configPath)
 	if err != nil {
@@ -86,6 +103,23 @@ func run(args []string) error {
 	err = server.Run(ctx, managed, cfg.Timeouts.Shutdown.Value())
 	live.Store(false)
 	return err
+}
+
+func runHealthcheck(client *http.Client, target string) error {
+	request, err := http.NewRequest(http.MethodGet, target, nil)
+	if err != nil {
+		return fmt.Errorf("healthcheck request: %w", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return fmt.Errorf("healthcheck request: %w", err)
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck status %d", response.StatusCode)
+	}
+	return nil
 }
 
 func setLogLevel(level *slog.LevelVar, configured string) {

@@ -12,6 +12,7 @@ COPY --from=build /out/goproxy /goproxy
 COPY configs/proxy.example.yaml /etc/goproxy/proxy.yaml
 USER nonroot:nonroot
 EXPOSE 8080 9090
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 CMD ["/goproxy", "-healthcheck", "http://127.0.0.1:9090/readyz"]
 ENTRYPOINT ["/goproxy"]
 CMD ["-config", "/etc/goproxy/proxy.yaml"]
 

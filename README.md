@@ -36,6 +36,10 @@ docker compose up --build
 curl http://localhost:8080/
 ```
 
+The production image runs its health check against the private `/readyz`
+endpoint by invoking the GoProxy binary's bounded `-healthcheck` mode; it does
+not add a shell or HTTP utility to the distroless image.
+
 ## Configuration and operation
 
 Configuration is strict YAML: unknown fields and unsafe values stop startup or
