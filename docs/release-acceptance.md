@@ -26,3 +26,8 @@ After stopping the stack, verify that the proxy exits within the configured
 shutdown timeout and that no Gefahr Compose containers remain. Record the command
 output in the release or CI evidence rather than committing machine-specific
 throughput and memory numbers to this document.
+
+Pushing an annotated `v*` tag runs the release workflow. It creates the GitHub
+release when necessary, uploads checksummed archives for supported operating
+systems, and publishes AMD64/ARM64 images to GHCR. Confirm both workflow jobs
+complete before announcing the release.

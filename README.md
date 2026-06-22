@@ -39,6 +39,10 @@ docker compose up --build
 curl http://localhost:8080/
 ```
 
+Tagged releases publish checksummed Linux, macOS, and Windows archives. The
+multi-architecture container image is available as
+`ghcr.io/anouarmohamed/gefahr:<version>` for Linux AMD64 and ARM64.
+
 The production image runs its health check against the private `/readyz`
 endpoint by invoking the `goproxy` binary's bounded `-healthcheck` mode; it does
 not add a shell or HTTP utility to the distroless image.

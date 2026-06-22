@@ -5,6 +5,11 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Automate checksummed cross-platform binary archives and multi-architecture
+  GHCR images for tagged releases.
+
 ## [1.0.1] - 2026-06-22
 
 ### Fixed
