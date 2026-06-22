@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/anouar/goproxy/internal/backend"
@@ -36,9 +37,13 @@ type Handler struct {
 	pools        map[string]*runtimePool
 	transport    http.RoundTripper
 	maxBodyBytes int64
+	requestSlots chan struct{}
 	cache        *responsecache.Cache
 	cacheTTL     time.Duration
 	maxCacheBody int64
+	cacheCapture atomic.Int64
+	inFlight     atomic.Int64
+	retired      atomic.Bool
 	observer     Observer
 }
 
@@ -61,7 +66,7 @@ func NewHandler(cfg config.Config, transport http.RoundTripper, options ...Optio
 	if transport == nil {
 		transport = NewTransport(cfg)
 	}
-	h := &Handler{router: routing.New(cfg.Routes), pools: make(map[string]*runtimePool, len(cfg.Pools)), transport: transport, maxBodyBytes: cfg.Limits.MaxBodyBytes, cache: responsecache.New(cfg.Cache.MaxEntries, cfg.Cache.MaxBytes), cacheTTL: cfg.Cache.DefaultTTL.Value(), maxCacheBody: cfg.Cache.MaxBytes}
+	h := &Handler{router: routing.New(cfg.Routes), pools: make(map[string]*runtimePool, len(cfg.Pools)), transport: transport, maxBodyBytes: cfg.Limits.MaxBodyBytes, requestSlots: make(chan struct{}, cfg.Limits.MaxConcurrentRequests), cache: responsecache.New(cfg.Cache.MaxEntries, cfg.Cache.MaxBytes), cacheTTL: cfg.Cache.DefaultTTL.Value(), maxCacheBody: cfg.Cache.MaxBytes}
 	for name, poolCfg := range cfg.Pools {
 		pool := &runtimePool{retry: poolCfg.Retry, passiveFailureThreshold: poolCfg.Health.UnhealthyThreshold, balancers: map[string]balance.Balancer{"round_robin": &balance.RoundRobin{}, "least_connections": &balance.LeastConnections{}}}
 		for _, backendCfg := range poolCfg.Backends {
@@ -81,6 +86,12 @@ func NewHandler(cfg config.Config, transport http.RoundTripper, options ...Optio
 
 // ServeHTTP routes and streams one request through a selected healthy backend.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.inFlight.Add(1)
+	defer func() {
+		if h.inFlight.Add(-1) == 0 && h.retired.Load() {
+			h.closeIdleConnections()
+		}
+	}()
 	started := time.Now()
 	requestID := newRequestID()
 	w.Header().Set("X-Request-ID", requestID)
@@ -99,6 +110,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil && r.Body != http.NoBody {
 		r.Body = http.MaxBytesReader(w, r.Body, h.maxBodyBytes)
 	}
+	if !safeRequestPath(r.URL) {
+		writeError(w, http.StatusBadRequest, "ambiguous_request_path", "request path contains ambiguous separators or segments")
+		return
+	}
 	route, ok := h.router.Match(r.Host, r.URL.Path)
 	if !ok {
 		writeError(w, http.StatusNotFound, "route_not_found", "route not found")
@@ -106,6 +121,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	pool := h.pools[route.Pool]
 	routeName = route.Name
+	select {
+	case h.requestSlots <- struct{}{}:
+		defer func() { <-h.requestSlots }()
+	default:
+		w.Header().Set("Retry-After", "1")
+		writeError(w, http.StatusServiceUnavailable, "proxy_overloaded", "proxy is at request capacity")
+		return
+	}
 	cacheKey := ""
 	if route.Cache.Enabled {
 		if eligible, _ := responsecache.RequestEligible(r); eligible {
@@ -155,9 +178,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if cacheKey != "" {
 		rp.ModifyResponse = func(response *http.Response) error {
+			if len(response.Trailer) > 0 || response.Header.Get("Content-Range") != "" {
+				return nil
+			}
 			decision := responsecache.Evaluate(r, response.StatusCode, response.Header, h.cacheTTL)
 			if decision.Cacheable {
-				response.Body = &cacheCaptureBody{ReadCloser: response.Body, max: h.maxCacheBody, commit: func(body []byte) {
+				response.Body = &cacheCaptureBody{ReadCloser: response.Body, max: h.maxCacheBody, reserve: h.reserveCacheCapture, release: func(bytes int64) {
+					h.cacheCapture.Add(-bytes)
+				}, commit: func(body []byte) {
 					h.cache.Set(cacheKey, responsecache.Response{Status: response.StatusCode, Header: response.Header, Body: body}, decision.TTL)
 				}}
 			}
@@ -177,6 +205,9 @@ func writeCached(w http.ResponseWriter, response responsecache.Response) {
 	if age < 0 {
 		age = 0
 	}
+	if initial, err := strconv.ParseInt(strings.TrimSpace(response.Header.Get("Age")), 10, 64); err == nil && initial > 0 && initial <= (1<<63-1)-age {
+		age += initial
+	}
 	w.Header().Set("Age", strconv.FormatInt(age, 10))
 	w.WriteHeader(response.Status)
 	_, _ = w.Write(response.Body)
@@ -184,28 +215,55 @@ func writeCached(w http.ResponseWriter, response responsecache.Response) {
 
 type cacheCaptureBody struct {
 	io.ReadCloser
-	buffer    []byte
-	max       int64
-	overflow  bool
-	committed bool
-	commit    func([]byte)
+	buffer   []byte
+	max      int64
+	overflow bool
+	finished bool
+	reserved int64
+	reserve  func(int64) bool
+	release  func(int64)
+	commit   func([]byte)
 }
 
 func (b *cacheCaptureBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
 	if !b.overflow && n > 0 {
-		if int64(len(b.buffer)+n) <= b.max {
+		if int64(len(b.buffer)+n) <= b.max && (b.reserve == nil || b.reserve(int64(n))) {
 			b.buffer = append(b.buffer, p[:n]...)
+			b.reserved += int64(n)
 		} else {
 			b.overflow = true
-			b.buffer = nil
+			b.discard()
 		}
 	}
-	if err == io.EOF && !b.overflow && !b.committed {
-		b.committed = true
-		b.commit(append([]byte(nil), b.buffer...))
+	if err == io.EOF {
+		b.finish(!b.overflow)
 	}
 	return n, err
+}
+
+func (b *cacheCaptureBody) Close() error {
+	b.finish(false)
+	return b.ReadCloser.Close()
+}
+
+func (b *cacheCaptureBody) finish(commit bool) {
+	if b.finished {
+		return
+	}
+	b.finished = true
+	if commit && b.commit != nil {
+		b.commit(append([]byte(nil), b.buffer...))
+	}
+	b.discard()
+}
+
+func (b *cacheCaptureBody) discard() {
+	if b.reserved > 0 && b.release != nil {
+		b.release(b.reserved)
+	}
+	b.reserved = 0
+	b.buffer = nil
 }
 
 type retryTransport struct {
@@ -246,7 +304,7 @@ func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error
 			return nil, err
 		}
 		var selectErr error
-		selected, selectErr = t.balancer.Next(t.pool.backends)
+		selected, selectErr = nextRetryBackend(t.balancer, t.pool.backends, selected)
 		if selectErr != nil {
 			return nil, selectErr
 		}
@@ -270,6 +328,19 @@ func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error
 	return nil, errors.New("retry attempts exhausted")
 }
 
+func nextRetryBackend(balancer balance.Balancer, backends []*backend.Backend, attempted *backend.Backend) (*backend.Backend, error) {
+	alternatives := make([]*backend.Backend, 0, len(backends)-1)
+	for _, candidate := range backends {
+		if candidate != attempted && candidate.Alive() {
+			alternatives = append(alternatives, candidate)
+		}
+	}
+	if len(alternatives) > 0 {
+		return balancer.Next(alternatives)
+	}
+	return balancer.Next(backends)
+}
+
 func isBackendFailure(err error) bool {
 	var tooLarge *http.MaxBytesError
 	return !errors.As(err, &tooLarge) && !errors.Is(err, context.Canceled)
@@ -283,6 +354,10 @@ type statusWriter struct {
 
 func (w *statusWriter) WriteHeader(status int) {
 	if w.wrote {
+		return
+	}
+	if status >= 100 && status < 200 && status != http.StatusSwitchingProtocols {
+		w.ResponseWriter.WriteHeader(status)
 		return
 	}
 	w.wrote, w.status = true, status
@@ -326,10 +401,41 @@ func (b *releaseBody) Close() error {
 	return err
 }
 
+func (h *Handler) reserveCacheCapture(bytes int64) bool {
+	for {
+		current := h.cacheCapture.Load()
+		if bytes > h.maxCacheBody-current {
+			return false
+		}
+		if h.cacheCapture.CompareAndSwap(current, current+bytes) {
+			return true
+		}
+	}
+}
+
+// Retire releases idle upstream connections once requests using this snapshot
+// finish. It is safe to race with a request that loaded the old snapshot just
+// before an atomic runtime swap.
+func (h *Handler) Retire() {
+	h.retired.Store(true)
+	if h.inFlight.Load() == 0 {
+		h.closeIdleConnections()
+	}
+}
+
+func (h *Handler) closeIdleConnections() {
+	if closer, ok := h.transport.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
 func forwardedValue(r *http.Request) string {
 	client := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(client); err == nil {
 		client = host
+	}
+	if ip := net.ParseIP(client); ip != nil && ip.To4() == nil {
+		client = "[" + client + "]"
 	}
 	proto := "http"
 	if r.TLS != nil {
@@ -346,4 +452,17 @@ func quoteForwarded(value string) string {
 		return r
 	}, value)
 	return strconv.Quote(value)
+}
+
+func safeRequestPath(u *url.URL) bool {
+	escaped := strings.ToLower(u.EscapedPath())
+	if strings.Contains(escaped, "%2f") || strings.Contains(escaped, "%5c") || strings.Contains(escaped, "%25") || strings.Contains(u.Path, `\`) {
+		return false
+	}
+	for _, segment := range strings.Split(u.Path, "/") {
+		if segment == "." || segment == ".." {
+			return false
+		}
+	}
+	return true
 }
