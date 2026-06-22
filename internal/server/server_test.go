@@ -1,7 +1,9 @@
 package server
 
 import (
+	"net"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,4 +23,54 @@ func TestNewPublicAppliesRequestBounds(t *testing.T) {
 	if managed.HTTP.ReadTimeout != 20*time.Second || managed.HTTP.WriteTimeout != 45*time.Second {
 		t.Fatal("body read and client write deadlines were not applied")
 	}
+	if managed.MaxConnections != cfg.Limits.MaxConnections {
+		t.Fatal("public connection limit was not applied")
+	}
 }
+
+func TestNewAdminAppliesWriteDeadline(t *testing.T) {
+	cfg := config.Default()
+	managed := NewAdmin(cfg, http.NotFoundHandler())
+	if managed.HTTP.WriteTimeout <= 0 || managed.HTTP.ReadHeaderTimeout <= 0 || managed.HTTP.MaxHeaderBytes <= 0 {
+		t.Fatalf("admin server is not fully bounded: %#v", managed.HTTP)
+	}
+}
+
+func TestLimitListenerCloseUnblocksCapacityWaiters(t *testing.T) {
+	base := &blockingListener{entered: make(chan struct{}), closed: make(chan struct{})}
+	listener := newLimitListener(base, 1)
+	done := make(chan struct{}, 2)
+	go func() { _, _ = listener.Accept(); done <- struct{}{} }()
+	<-base.entered
+	go func() { _, _ = listener.Accept(); done <- struct{}{} }()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("Accept remained blocked after listener close")
+		}
+	}
+}
+
+type blockingListener struct {
+	entered   chan struct{}
+	closed    chan struct{}
+	enterOnce sync.Once
+	closeOnce sync.Once
+}
+
+func (l *blockingListener) Accept() (net.Conn, error) {
+	l.enterOnce.Do(func() { close(l.entered) })
+	<-l.closed
+	return nil, net.ErrClosed
+}
+
+func (l *blockingListener) Close() error {
+	l.closeOnce.Do(func() { close(l.closed) })
+	return nil
+}
+
+func (*blockingListener) Addr() net.Addr { return &net.TCPAddr{} }
