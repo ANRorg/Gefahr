@@ -4,6 +4,7 @@ package metrics
 import (
 	"fmt"
 	"net/http"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -81,6 +82,8 @@ func (m *Metrics) serveHTTP(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (m *Metrics) lines() []string {
+	var memory runtime.MemStats
+	runtime.ReadMemStats(&memory)
 	lines := []string{
 		"# HELP goproxy_requests_total Completed public requests.", "# TYPE goproxy_requests_total counter",
 		"# HELP goproxy_request_duration_seconds Public request duration.", "# TYPE goproxy_request_duration_seconds summary",
@@ -88,7 +91,12 @@ func (m *Metrics) lines() []string {
 		"# HELP goproxy_retries_total Upstream retry attempts.", "# TYPE goproxy_retries_total counter",
 		"# HELP goproxy_backend_healthy Whether a backend is eligible for traffic.", "# TYPE goproxy_backend_healthy gauge",
 		"# HELP goproxy_backend_active_requests Requests currently assigned to a backend.", "# TYPE goproxy_backend_active_requests gauge",
+		"# HELP go_goroutines Number of goroutines that currently exist.", "# TYPE go_goroutines gauge",
+		fmt.Sprintf("go_goroutines %d", runtime.NumGoroutine()),
+		"# HELP go_memstats_alloc_bytes Bytes of allocated heap objects.", "# TYPE go_memstats_alloc_bytes gauge",
+		fmt.Sprintf("go_memstats_alloc_bytes %d", memory.Alloc),
 	}
+	fixed := len(lines)
 	for key, value := range m.requests {
 		lines = append(lines, fmt.Sprintf("goproxy_requests_total{method=%s,route=%s,status=%s} %d", quote(key.method), quote(key.route), quote(strconv.Itoa(key.status)), value))
 	}
@@ -107,7 +115,7 @@ func (m *Metrics) lines() []string {
 	for key, value := range m.active {
 		lines = append(lines, fmt.Sprintf("goproxy_backend_active_requests{backend=%s,pool=%s} %d", quote(key.backend), quote(key.pool), value))
 	}
-	sort.Strings(lines[12:])
+	sort.Strings(lines[fixed:])
 	return lines
 }
 
