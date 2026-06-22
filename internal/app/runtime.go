@@ -43,6 +43,7 @@ func New(cfg config.Config, path string, observer proxy.Observer) (*Runtime, err
 		runtime.tlsStores[i] = store
 	}
 	runtime.current.Store(&cfg)
+	reconcileObserver(observer, cfg)
 	return runtime, nil
 }
 
@@ -103,10 +104,20 @@ func (r *Runtime) Reload(parent context.Context) error {
 			r.tlsStores[i].Publish(certificate)
 		}
 	}
+	previous := r.dynamic.Current()
+	handler.InheritBackendHealth(previous)
+	reconcileObserver(r.observer, next)
 	r.dynamic.Swap(handler)
 	r.current.Store(&next)
 	r.startHealthLocked(parent)
+	previous.Retire()
 	return nil
+}
+
+func reconcileObserver(observer proxy.Observer, cfg config.Config) {
+	if reconciler, ok := observer.(interface{ ReconcileConfig(config.Config) }); ok {
+		reconciler.ReconcileConfig(cfg)
+	}
 }
 
 func (r *Runtime) startHealthLocked(parent context.Context) {
@@ -134,6 +145,27 @@ func immutableCompatible(current, next config.Config) error {
 		if (current.Listeners[i].TLS == nil) != (next.Listeners[i].TLS == nil) {
 			errs = append(errs, fmt.Errorf("listeners[%d] TLS mode requires restart", i))
 		}
+	}
+	if current.Timeouts.ReadHeader != next.Timeouts.ReadHeader {
+		errs = append(errs, errors.New("timeouts.read_header requires restart"))
+	}
+	if current.Timeouts.ReadBody != next.Timeouts.ReadBody {
+		errs = append(errs, errors.New("timeouts.read_body requires restart"))
+	}
+	if current.Timeouts.Write != next.Timeouts.Write {
+		errs = append(errs, errors.New("timeouts.write requires restart"))
+	}
+	if current.Timeouts.Idle != next.Timeouts.Idle {
+		errs = append(errs, errors.New("timeouts.idle requires restart"))
+	}
+	if current.Timeouts.Shutdown != next.Timeouts.Shutdown {
+		errs = append(errs, errors.New("timeouts.shutdown requires restart"))
+	}
+	if current.Limits.MaxHeaderBytes != next.Limits.MaxHeaderBytes {
+		errs = append(errs, errors.New("limits.max_header_bytes requires restart"))
+	}
+	if current.Limits.MaxConnections != next.Limits.MaxConnections {
+		errs = append(errs, errors.New("limits.max_connections requires restart"))
 	}
 	return errors.Join(errs...)
 }

@@ -32,6 +32,17 @@ func TestReloadRejectsListenerMutationAndRetainsConfig(t *testing.T) {
 	}
 }
 
+func TestImmutableCompatibleRejectsServerLevelBounds(t *testing.T) {
+	current := config.Default()
+	next := current
+	next.Timeouts.Write++
+	next.Limits.MaxHeaderBytes++
+	err := immutableCompatible(current, next)
+	if err == nil || !strings.Contains(err.Error(), "timeouts.write") || !strings.Contains(err.Error(), "limits.max_header_bytes") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 const testYAML = `
 listeners:
   - address: :8080

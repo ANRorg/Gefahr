@@ -1,6 +1,10 @@
 package observability
 
-import "time"
+import (
+	"time"
+
+	"github.com/anouar/goproxy/internal/config"
+)
 
 // RequestObserver receives completed public request records.
 type RequestObserver interface {
@@ -37,5 +41,15 @@ func (f Fanout) SetBackendHealth(pool, backend string, healthy bool) {
 func (f Fanout) SetBackendActive(pool, backend string, active int64) {
 	for _, observer := range f.Backends {
 		observer.SetBackendActive(pool, backend, active)
+	}
+}
+
+// ReconcileConfig forwards an accepted runtime configuration to consumers
+// that retain configuration-derived state such as metric label sets.
+func (f Fanout) ReconcileConfig(cfg config.Config) {
+	for _, observer := range f.Requests {
+		if reconciler, ok := observer.(interface{ ReconcileConfig(config.Config) }); ok {
+			reconciler.ReconcileConfig(cfg)
+		}
 	}
 }
