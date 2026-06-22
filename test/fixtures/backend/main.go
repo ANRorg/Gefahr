@@ -29,7 +29,7 @@ func main() {
 		fmt.Fprintln(w, *name)
 	})
 	mux.HandleFunc("/cookie", func(w http.ResponseWriter, _ *http.Request) {
-		http.SetCookie(w, &http.Cookie{Name: "session", Value: "fixture", HttpOnly: true})
+		http.SetCookie(w, &http.Cookie{Name: "session", Value: "fixture", Secure: true, HttpOnly: true})
 		fmt.Fprintln(w, *name)
 	})
 	mux.HandleFunc("/chunked", func(w http.ResponseWriter, _ *http.Request) {
