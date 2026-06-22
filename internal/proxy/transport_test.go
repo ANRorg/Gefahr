@@ -12,11 +12,17 @@ func TestNewTransportAppliesTimeoutsAndBounds(t *testing.T) {
 	cfg.Timeouts.Dial = config.Duration(3 * time.Second)
 	cfg.Timeouts.ResponseHeader = config.Duration(7 * time.Second)
 	transport := NewTransport(cfg)
+	if transport.Proxy != nil {
+		t.Fatal("backend transport unexpectedly honors ambient proxy variables")
+	}
 	if transport.ResponseHeaderTimeout != 7*time.Second {
 		t.Fatalf("response header timeout = %s", transport.ResponseHeaderTimeout)
 	}
 	if transport.MaxIdleConns <= 0 || transport.MaxIdleConnsPerHost <= 0 {
 		t.Fatal("idle connection pool is unbounded")
+	}
+	if transport.MaxResponseHeaderBytes != int64(cfg.Limits.MaxHeaderBytes) || transport.MaxConnsPerHost <= 0 {
+		t.Fatal("upstream response headers or connections are unbounded")
 	}
 	if !transport.ForceAttemptHTTP2 {
 		t.Fatal("HTTP/2 is disabled")
