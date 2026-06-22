@@ -16,13 +16,25 @@ type CertificateStore struct {
 
 // Load validates and publishes the configured PEM certificate pair.
 func (s *CertificateStore) Load(cfg config.TLSConfig) error {
-	certificate, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+	certificate, err := LoadCertificate(cfg)
 	if err != nil {
-		return fmt.Errorf("load TLS certificate: %w", err)
+		return err
 	}
-	s.certificate.Store(&certificate)
+	s.Publish(certificate)
 	return nil
 }
+
+// LoadCertificate validates a PEM pair without publishing it.
+func LoadCertificate(cfg config.TLSConfig) (*tls.Certificate, error) {
+	certificate, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load TLS certificate: %w", err)
+	}
+	return &certificate, nil
+}
+
+// Publish atomically replaces the certificate used by new handshakes.
+func (s *CertificateStore) Publish(certificate *tls.Certificate) { s.certificate.Store(certificate) }
 
 // TLSConfig returns a server policy that rejects protocols older than TLS 1.2
 // and reads the active certificate at handshake time.

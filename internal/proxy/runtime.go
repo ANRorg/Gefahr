@@ -27,6 +27,12 @@ func (d *Dynamic) Swap(next *Handler) { d.current.Store(next) }
 // ServeHTTP delegates to the currently published runtime.
 func (d *Dynamic) ServeHTTP(w http.ResponseWriter, r *http.Request) { d.current.Load().ServeHTTP(w, r) }
 
+// Current returns the active concrete runtime snapshot.
+func (d *Dynamic) Current() *Handler { return d.current.Load() }
+
+// Ready reports readiness of the active runtime snapshot.
+func (d *Dynamic) Ready() bool { return d.current.Load().Ready() }
+
 // Ready reports whether every configured pool has at least one healthy backend.
 func (h *Handler) Ready() bool {
 	if len(h.pools) == 0 {
