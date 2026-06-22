@@ -25,14 +25,22 @@ func RequestEligible(r *http.Request) (bool, string) {
 	if r.Method != http.MethodGet {
 		return false, "method"
 	}
-	if r.Header.Get("Authorization") != "" {
+	if headerPresent(r.Header, "Authorization") {
 		return false, "authorization"
 	}
-	if r.Header.Get("Cookie") != "" {
+	if headerPresent(r.Header, "Cookie") {
 		return false, "cookie"
 	}
-	cacheControl := strings.ToLower(r.Header.Get("Cache-Control"))
-	if hasDirective(cacheControl, "no-cache") || hasDirective(cacheControl, "no-store") || strings.EqualFold(r.Header.Get("Pragma"), "no-cache") {
+	if headerPresent(r.Header, "Range") {
+		return false, "range"
+	}
+	for _, name := range []string{"If-Match", "If-None-Match", "If-Modified-Since", "If-Unmodified-Since", "If-Range"} {
+		if headerPresent(r.Header, name) {
+			return false, "conditional"
+		}
+	}
+	cacheControl := cacheControlValue(r.Header)
+	if hasDirective(cacheControl, "no-cache") || hasDirective(cacheControl, "no-store") || hasDirective(cacheControl, "max-age") || hasDirective(cacheControl, "min-fresh") || strings.Contains(strings.ToLower(strings.Join(r.Header.Values("Pragma"), ",")), "no-cache") {
 		return false, "request_cache_control"
 	}
 	return true, "eligible"
@@ -46,23 +54,44 @@ func Evaluate(r *http.Request, status int, header http.Header, defaultTTL time.D
 	if status != http.StatusOK {
 		return Decision{Reason: "status"}
 	}
-	if header.Get("Set-Cookie") != "" {
+	if headerPresent(header, "Set-Cookie") {
 		return Decision{Reason: "set_cookie"}
 	}
-	if header.Get("Vary") != "" {
+	if headerPresent(header, "Vary") {
 		return Decision{Reason: "vary"}
 	}
-	cacheControl := strings.ToLower(header.Get("Cache-Control"))
+	cacheControl := cacheControlValue(header)
 	for _, directive := range []string{"no-store", "private", "no-cache"} {
 		if hasDirective(cacheControl, directive) {
 			return Decision{Reason: directive}
 		}
 	}
 	ttl := defaultTTL
-	if seconds, ok := directiveSeconds(cacheControl, "s-maxage"); ok {
+	if seconds, present, valid := directiveSeconds(cacheControl, "s-maxage"); present {
+		if !valid || !durationSecondsValid(seconds) {
+			return Decision{Reason: "invalid_freshness"}
+		}
 		ttl = time.Duration(seconds) * time.Second
-	} else if seconds, ok := directiveSeconds(cacheControl, "max-age"); ok {
+	} else if seconds, present, valid := directiveSeconds(cacheControl, "max-age"); present {
+		if !valid || !durationSecondsValid(seconds) {
+			return Decision{Reason: "invalid_freshness"}
+		}
 		ttl = time.Duration(seconds) * time.Second
+	} else if headerPresent(header, "Expires") {
+		expires, err := http.ParseTime(header.Get("Expires"))
+		if err != nil {
+			return Decision{Reason: "invalid_expires"}
+		}
+		ttl = time.Until(expires)
+	}
+	if age, err := strconv.ParseInt(strings.TrimSpace(header.Get("Age")), 10, 64); headerPresent(header, "Age") {
+		if len(header.Values("Age")) != 1 {
+			return Decision{Reason: "invalid_age"}
+		}
+		if err != nil || age < 0 || !durationSecondsValid(age) {
+			return Decision{Reason: "invalid_age"}
+		}
+		ttl -= time.Duration(age) * time.Second
 	}
 	if ttl <= 0 {
 		return Decision{Reason: "zero_ttl"}
@@ -79,14 +108,38 @@ func hasDirective(value, name string) bool {
 	return false
 }
 
-func directiveSeconds(value, name string) (int64, bool) {
+func directiveSeconds(value, name string) (seconds int64, present, valid bool) {
+	var found bool
 	for _, part := range strings.Split(value, ",") {
 		pieces := strings.SplitN(strings.TrimSpace(part), "=", 2)
-		if len(pieces) != 2 || pieces[0] != name {
+		if pieces[0] != name {
 			continue
 		}
-		seconds, err := strconv.ParseInt(strings.Trim(strings.TrimSpace(pieces[1]), `"`), 10, 64)
-		return seconds, err == nil && seconds >= 0
+		if found {
+			return 0, true, false
+		}
+		found = true
+		if len(pieces) != 2 {
+			return 0, true, false
+		}
+		parsed, err := strconv.ParseInt(strings.Trim(strings.TrimSpace(pieces[1]), `"`), 10, 64)
+		if err != nil || parsed < 0 {
+			return 0, true, false
+		}
+		seconds = parsed
 	}
-	return 0, false
+	return seconds, found, found
+}
+
+func cacheControlValue(header http.Header) string {
+	return strings.ToLower(strings.Join(header.Values("Cache-Control"), ","))
+}
+
+func headerPresent(header http.Header, name string) bool {
+	return len(header.Values(name)) > 0
+}
+
+func durationSecondsValid(seconds int64) bool {
+	const maxDurationSeconds = int64((1<<63)-1) / int64(time.Second)
+	return seconds <= maxDurationSeconds
 }

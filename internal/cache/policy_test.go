@@ -29,8 +29,17 @@ func TestEvaluateRejectsUnsafeResponses(t *testing.T) {
 	}{
 		{"authorization", withHeader(base.Clone(base.Context()), "Authorization", "Bearer secret"), 200, nil, "authorization"},
 		{"cookie", withHeader(base.Clone(base.Context()), "Cookie", "session=x"), 200, nil, "cookie"},
+		{"range", withHeader(base.Clone(base.Context()), "Range", "bytes=0-10"), 200, nil, "range"},
+		{"conditional", withHeader(base.Clone(base.Context()), "If-None-Match", `"abc"`), 200, nil, "conditional"},
 		{"set-cookie", base, 200, http.Header{"Set-Cookie": {"session=x"}}, "set_cookie"},
+		{"set-cookie-second-field", base, 200, http.Header{"Set-Cookie": {"", "session=x"}}, "set_cookie"},
 		{"private", base, 200, http.Header{"Cache-Control": {"private"}}, "private"},
+		{"private-second-field", base, 200, http.Header{"Cache-Control": {"public", "private"}}, "private"},
+		{"invalid-freshness", base, 200, http.Header{"Cache-Control": {"max-age=invalid"}}, "invalid_freshness"},
+		{"duplicate-freshness", base, 200, http.Header{"Cache-Control": {"max-age=60, max-age=0"}}, "invalid_freshness"},
+		{"overflow-freshness", base, 200, http.Header{"Cache-Control": {"max-age=9223372036854775807"}}, "invalid_freshness"},
+		{"stale-age", base, 200, http.Header{"Cache-Control": {"max-age=10"}, "Age": {"10"}}, "zero_ttl"},
+		{"expired", base, 200, http.Header{"Expires": {time.Now().Add(-time.Hour).UTC().Format(http.TimeFormat)}}, "zero_ttl"},
 		{"vary", base, 200, http.Header{"Vary": {"Accept-Encoding"}}, "vary"},
 		{"status", base, 404, nil, "status"},
 	}
