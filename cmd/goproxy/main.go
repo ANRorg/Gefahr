@@ -1,4 +1,102 @@
-// Command goproxy starts the reverse proxy.
+// Command goproxy starts the reverse proxy and its operational listener.
 package main
 
-func main() {}
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"strings"
+	"sync/atomic"
+	"syscall"
+
+	"github.com/anouar/goproxy/internal/admin"
+	"github.com/anouar/goproxy/internal/app"
+	"github.com/anouar/goproxy/internal/config"
+	"github.com/anouar/goproxy/internal/metrics"
+	"github.com/anouar/goproxy/internal/observability"
+	"github.com/anouar/goproxy/internal/server"
+)
+
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run(args []string) error {
+	flags := flag.NewFlagSet("goproxy", flag.ContinueOnError)
+	configPath := flags.String("config", "configs/proxy.example.yaml", "path to YAML configuration")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.LoadFile(*configPath)
+	if err != nil {
+		return err
+	}
+
+	level := new(slog.LevelVar)
+	setLogLevel(level, cfg.Logging.Level)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	metricSet := metrics.New()
+	observer := observability.Fanout{Requests: []observability.RequestObserver{observability.RequestLogger{Logger: logger}, metricSet}, Backends: []observability.BackendObserver{metricSet}}
+	runtime, err := app.New(cfg, *configPath, observer)
+	if err != nil {
+		return err
+	}
+
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
+	ctx, cancel := context.WithCancel(signalCtx)
+	defer cancel()
+	var live atomic.Bool
+	live.Store(true)
+	adminHandler := admin.NewHandler(live.Load, runtime.Ready, metricSet.Handler())
+
+	managed := make([]server.Managed, 0, len(cfg.Listeners)+1)
+	for i, listener := range cfg.Listeners {
+		managed = append(managed, server.NewPublic(listener, cfg, runtime.Handler(), runtime.TLSConfig(i)))
+	}
+	managed = append(managed, server.NewAdmin(cfg, adminHandler))
+	runtime.StartHealthChecks(ctx)
+
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-hup:
+				if err := runtime.Reload(ctx); err != nil {
+					logger.Error("configuration reload rejected", "error", err)
+					continue
+				}
+				setLogLevel(level, runtime.Config().Logging.Level)
+				logger.Info("configuration reloaded")
+			}
+		}
+	}()
+
+	logger.Info("goproxy starting", "listeners", len(cfg.Listeners), "admin", cfg.Admin.Address)
+	err = server.Run(ctx, managed, cfg.Timeouts.Shutdown.Value())
+	live.Store(false)
+	return err
+}
+
+func setLogLevel(level *slog.LevelVar, configured string) {
+	switch strings.ToLower(configured) {
+	case "debug":
+		level.Set(slog.LevelDebug)
+	case "warn":
+		level.Set(slog.LevelWarn)
+	case "error":
+		level.Set(slog.LevelError)
+	default:
+		level.Set(slog.LevelInfo)
+	}
+}
