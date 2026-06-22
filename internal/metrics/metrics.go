@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/anouar/goproxy/internal/config"
 )
 
 type requestKey struct {
@@ -22,19 +24,22 @@ type backendKey struct{ pool, backend string }
 // Metrics stores counters and gauges whose labels come only from validated
 // configuration or bounded enums, preventing attacker-controlled cardinality.
 type Metrics struct {
-	mu            sync.Mutex
-	requests      map[requestKey]uint64
-	durationCount map[string]uint64
-	durationSum   map[string]float64
-	cache         map[cacheKey]uint64
-	retries       map[string]uint64
-	health        map[backendKey]float64
-	active        map[backendKey]int64
+	mu              sync.Mutex
+	requests        map[requestKey]uint64
+	durationCount   map[string]uint64
+	durationSum     map[string]float64
+	cache           map[cacheKey]uint64
+	retries         map[string]uint64
+	health          map[backendKey]float64
+	active          map[backendKey]int64
+	allowedRoutes   map[string]bool
+	allowedBackends map[backendKey]bool
+	reconciled      bool
 }
 
 // New creates an empty metrics registry.
 func New() *Metrics {
-	return &Metrics{requests: map[requestKey]uint64{}, durationCount: map[string]uint64{}, durationSum: map[string]float64{}, cache: map[cacheKey]uint64{}, retries: map[string]uint64{}, health: map[backendKey]float64{}, active: map[backendKey]int64{}}
+	return &Metrics{requests: map[requestKey]uint64{}, durationCount: map[string]uint64{}, durationSum: map[string]float64{}, cache: map[cacheKey]uint64{}, retries: map[string]uint64{}, health: map[backendKey]float64{}, active: map[backendKey]int64{}, allowedRoutes: map[string]bool{}, allowedBackends: map[backendKey]bool{}}
 }
 
 // Handler exposes metrics in the Prometheus text exposition format.
@@ -42,8 +47,12 @@ func (m *Metrics) Handler() http.Handler { return http.HandlerFunc(m.serveHTTP) 
 
 // ObserveRequest records one completed public request.
 func (m *Metrics) ObserveRequest(_, route, method, _, _ string, status, attempts int, cacheResult string, duration time.Duration) {
+	method = boundedMethod(method)
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.reconciled && !m.allowedRoutes[route] && route != "unmatched" {
+		route = "retired"
+	}
 	m.requests[requestKey{route, method, status}]++
 	m.durationCount[route]++
 	m.durationSum[route] += duration.Seconds()
@@ -55,10 +64,23 @@ func (m *Metrics) ObserveRequest(_, route, method, _, _ string, status, attempts
 	}
 }
 
+func boundedMethod(method string) string {
+	switch method {
+	case http.MethodConnect, http.MethodDelete, http.MethodGet, http.MethodHead,
+		http.MethodOptions, http.MethodPatch, http.MethodPost, http.MethodPut, http.MethodTrace:
+		return method
+	default:
+		return "OTHER"
+	}
+}
+
 // SetBackendHealth updates the backend eligibility gauge.
 func (m *Metrics) SetBackendHealth(pool, backend string, healthy bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.reconciled && !m.allowedBackends[backendKey{pool, backend}] {
+		return
+	}
 	if healthy {
 		m.health[backendKey{pool, backend}] = 1
 	} else {
@@ -69,8 +91,52 @@ func (m *Metrics) SetBackendHealth(pool, backend string, healthy bool) {
 // SetBackendActive updates the backend active-request gauge.
 func (m *Metrics) SetBackendActive(pool, backend string, active int64) {
 	m.mu.Lock()
+	if m.reconciled && !m.allowedBackends[backendKey{pool, backend}] {
+		m.mu.Unlock()
+		return
+	}
 	m.active[backendKey{pool, backend}] = active
 	m.mu.Unlock()
+}
+
+// ReconcileConfig bounds metric labels across repeated runtime reloads.
+func (m *Metrics) ReconcileConfig(cfg config.Config) {
+	routes := make(map[string]bool, len(cfg.Routes))
+	for _, route := range cfg.Routes {
+		routes[route.Name] = true
+	}
+	backends := make(map[backendKey]bool)
+	for poolName, pool := range cfg.Pools {
+		for _, backend := range pool.Backends {
+			backends[backendKey{poolName, backend.Name}] = true
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.allowedRoutes, m.allowedBackends, m.reconciled = routes, backends, true
+	for key := range m.requests {
+		if !routes[key.route] && key.route != "unmatched" && key.route != "retired" {
+			delete(m.requests, key)
+		}
+	}
+	for route := range m.durationCount {
+		if !routes[route] && route != "unmatched" && route != "retired" {
+			delete(m.durationCount, route)
+			delete(m.durationSum, route)
+		}
+	}
+	for key := range m.cache {
+		if !routes[key.route] && key.route != "unmatched" && key.route != "retired" {
+			delete(m.cache, key)
+		}
+	}
+	for route := range m.retries {
+		if !routes[route] && route != "unmatched" && route != "retired" {
+			delete(m.retries, route)
+		}
+	}
+	clear(m.health)
+	clear(m.active)
 }
 
 func (m *Metrics) serveHTTP(w http.ResponseWriter, _ *http.Request) {
