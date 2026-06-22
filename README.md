@@ -1,5 +1,7 @@
 # Gefahr
 
+[![CI](https://github.com/anouar/goproxy/actions/workflows/ci.yml/badge.svg)](https://github.com/anouar/goproxy/actions/workflows/ci.yml)
+
 Gefahr is a configurable Go reverse proxy with host/path routing, round-robin
 and least-connections balancing, active and passive health tracking, bounded
 response caching, static TLS termination, structured logs, and Prometheus
