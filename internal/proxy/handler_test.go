@@ -151,6 +151,30 @@ func TestHandlerRetriesSafeTransportFailure(t *testing.T) {
 	}
 }
 
+func TestHandlerServesEligibleResponseFromCache(t *testing.T) {
+	cfg := proxyConfig()
+	cfg.Routes[0].Cache.Enabled = true
+	calls := 0
+	transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Cache-Control": {"public, max-age=60"}}, Body: io.NopCloser(strings.NewReader("cached"))}, nil
+	})
+	h, err := NewHandler(cfg, transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		recorder := httptest.NewRecorder()
+		h.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://api.test/api/items?q=one", nil))
+		if recorder.Code != http.StatusOK || recorder.Body.String() != "cached" {
+			t.Fatalf("response %d = %d %q", i, recorder.Code, recorder.Body.String())
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("upstream calls = %d", calls)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

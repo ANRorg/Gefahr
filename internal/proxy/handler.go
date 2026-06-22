@@ -12,9 +12,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/anouar/goproxy/internal/backend"
 	"github.com/anouar/goproxy/internal/balance"
+	responsecache "github.com/anouar/goproxy/internal/cache"
 	"github.com/anouar/goproxy/internal/config"
 	"github.com/anouar/goproxy/internal/routing"
 )
@@ -32,6 +34,9 @@ type Handler struct {
 	pools        map[string]*runtimePool
 	transport    http.RoundTripper
 	maxBodyBytes int64
+	cache        *responsecache.Cache
+	cacheTTL     time.Duration
+	maxCacheBody int64
 }
 
 // NewHandler compiles validated configuration into a request handler.
@@ -42,7 +47,7 @@ func NewHandler(cfg config.Config, transport http.RoundTripper) (*Handler, error
 	if transport == nil {
 		transport = NewTransport(cfg)
 	}
-	h := &Handler{router: routing.New(cfg.Routes), pools: make(map[string]*runtimePool, len(cfg.Pools)), transport: transport, maxBodyBytes: cfg.Limits.MaxBodyBytes}
+	h := &Handler{router: routing.New(cfg.Routes), pools: make(map[string]*runtimePool, len(cfg.Pools)), transport: transport, maxBodyBytes: cfg.Limits.MaxBodyBytes, cache: responsecache.New(cfg.Cache.MaxEntries, cfg.Cache.MaxBytes), cacheTTL: cfg.Cache.DefaultTTL.Value(), maxCacheBody: cfg.Cache.MaxBytes}
 	for name, poolCfg := range cfg.Pools {
 		pool := &runtimePool{retry: poolCfg.Retry, passiveFailureThreshold: poolCfg.Health.UnhealthyThreshold, balancers: map[string]balance.Balancer{"round_robin": &balance.RoundRobin{}, "least_connections": &balance.LeastConnections{}}}
 		for _, backendCfg := range poolCfg.Backends {
@@ -72,6 +77,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pool := h.pools[route.Pool]
+	cacheKey := ""
+	if route.Cache.Enabled {
+		if eligible, _ := responsecache.RequestEligible(r); eligible {
+			cacheKey = responsecache.Key(r)
+			if cached, hit := h.cache.Get(cacheKey); hit {
+				writeCached(w, cached)
+				return
+			}
+		}
+	}
 	selected, err := pool.balancers[route.Strategy].Next(pool.backends)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "no_healthy_upstream", "no healthy upstream")
@@ -103,7 +118,59 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		},
 	}
+	if cacheKey != "" {
+		rp.ModifyResponse = func(response *http.Response) error {
+			decision := responsecache.Evaluate(r, response.StatusCode, response.Header, h.cacheTTL)
+			if decision.Cacheable {
+				response.Body = &cacheCaptureBody{ReadCloser: response.Body, max: h.maxCacheBody, commit: func(body []byte) {
+					h.cache.Set(cacheKey, responsecache.Response{Status: response.StatusCode, Header: response.Header, Body: body}, decision.TTL)
+				}}
+			}
+			return nil
+		}
+	}
 	rp.ServeHTTP(w, r)
+}
+
+func writeCached(w http.ResponseWriter, response responsecache.Response) {
+	for name, values := range response.Header {
+		for _, value := range values {
+			w.Header().Add(name, value)
+		}
+	}
+	age := int64(time.Since(response.Stored).Seconds())
+	if age < 0 {
+		age = 0
+	}
+	w.Header().Set("Age", strconv.FormatInt(age, 10))
+	w.WriteHeader(response.Status)
+	_, _ = w.Write(response.Body)
+}
+
+type cacheCaptureBody struct {
+	io.ReadCloser
+	buffer    []byte
+	max       int64
+	overflow  bool
+	committed bool
+	commit    func([]byte)
+}
+
+func (b *cacheCaptureBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if !b.overflow && n > 0 {
+		if int64(len(b.buffer)+n) <= b.max {
+			b.buffer = append(b.buffer, p[:n]...)
+		} else {
+			b.overflow = true
+			b.buffer = nil
+		}
+	}
+	if err == io.EOF && !b.overflow && !b.committed {
+		b.committed = true
+		b.commit(append([]byte(nil), b.buffer...))
+	}
+	return n, err
 }
 
 type retryTransport struct {
