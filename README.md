@@ -1,6 +1,84 @@
 # GoProxy
 
-GoProxy is a production-minded, configurable reverse proxy written in Go.
+GoProxy is a configurable Go reverse proxy with host/path routing, round-robin
+and least-connections balancing, active and passive health tracking, bounded
+response caching, static TLS termination, structured logs, and Prometheus
+metrics.
 
-The implementation is being built in small, independently tested commits.
+The data plane uses Go's maintained `httputil.ReverseProxy`; GoProxy owns the
+policy around it. See [the architecture decision](docs/adr/0001-proxy-foundation.md)
+and [architecture overview](docs/architecture.md).
+
+## Quick start
+
+Requirements: Go 1.25 or Docker with Compose.
+
+Run two fixture backends in separate terminals:
+
+```sh
+go run ./test/fixtures/backend -address :9001 -name backend-1
+go run ./test/fixtures/backend -address :9002 -name backend-2
+```
+
+Then run the proxy:
+
+```sh
+go run ./cmd/goproxy -config configs/proxy.example.yaml
+curl -H 'Host: localhost' http://127.0.0.1:8080/
+curl http://127.0.0.1:9090/readyz
+curl http://127.0.0.1:9090/metrics
+```
+
+Or run the complete demonstration:
+
+```sh
+docker compose up --build
+curl http://localhost:8080/
+```
+
+## Configuration and operation
+
+Configuration is strict YAML: unknown fields and unsafe values stop startup or
+reject reload. Copy `configs/proxy.example.yaml`, adjust listeners, routes, and
+backend URLs, then pass it with `-config`.
+
+- `SIGHUP` validates and atomically reloads routes, pools, policies, logging,
+  and TLS certificate contents. Existing requests finish on their old snapshot.
+- Listener addresses, listener count, TLS mode, and the admin address require a
+  restart because bound socket changes cannot be atomic.
+- `SIGINT` and `SIGTERM` stop acceptance and drain requests within
+  `timeouts.shutdown`.
+- The admin listener should remain private. It exposes `/livez`, `/readyz`, and
+  `/metrics`.
+
+See the [configuration reference](docs/configuration.md) and
+[operations runbook](docs/operations.md).
+
+## Development
+
+```sh
+make test
+make test-race
+make check
+make test-integration # requires permission to open local TCP listeners
+```
+
+Every repository commit is intentionally small and independently testable.
+
+## Security model and limitations
+
+- Client forwarding headers are discarded and rebuilt from the trusted
+  connection metadata.
+- Request headers, bodies, network operations, cache memory, and shutdown are
+  bounded.
+- Shared caching bypasses authenticated, cookie-bearing, personalized,
+  non-200, `private`, `no-store`, `no-cache`, and `Vary` responses.
+- Static PEM certificates are loaded from deployment storage and must never be
+  committed.
+
+Version 1 does not include HTTP/3, ACME, dynamic service discovery, distributed
+caching, cache revalidation, `Vary` variants, a mutation API, or per-route
+authentication. The response write timeout limits very long-lived streams;
+WebSocket-specific behavior is not an acceptance target. See
+[security and limitations](docs/security.md).
 
