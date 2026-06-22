@@ -238,6 +238,9 @@ func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error
 			return resp, nil
 		}
 		release()
+		if !isBackendFailure(err) {
+			return nil, err
+		}
 		selected.RecordPassiveFailure(t.pool.passiveFailureThreshold)
 		if attempt == attempts {
 			return nil, err
@@ -265,6 +268,11 @@ func (t *retryTransport) RoundTrip(initial *http.Request) (*http.Response, error
 		}
 	}
 	return nil, errors.New("retry attempts exhausted")
+}
+
+func isBackendFailure(err error) bool {
+	var tooLarge *http.MaxBytesError
+	return !errors.As(err, &tooLarge) && !errors.Is(err, context.Canceled)
 }
 
 type statusWriter struct {

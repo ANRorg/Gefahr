@@ -175,6 +175,31 @@ func TestHandlerServesEligibleResponseFromCache(t *testing.T) {
 	}
 }
 
+func TestClientBodyErrorDoesNotEjectBackend(t *testing.T) {
+	calls := 0
+	transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return nil, &http.MaxBytesError{Limit: 10}
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("healthy"))}, nil
+	})
+	h, err := NewHandler(proxyConfig(), transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := httptest.NewRecorder()
+	h.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "http://api.test/api", nil))
+	if first.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("first status = %d", first.Code)
+	}
+	second := httptest.NewRecorder()
+	h.ServeHTTP(second, httptest.NewRequest(http.MethodGet, "http://api.test/api", nil))
+	if second.Code != http.StatusOK || second.Body.String() != "healthy" {
+		t.Fatalf("second response = %d %q", second.Code, second.Body.String())
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
