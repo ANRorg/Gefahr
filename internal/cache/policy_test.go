@@ -79,3 +79,34 @@ func TestEvaluateHandlesSpacingInCacheControl(t *testing.T) {
 		})
 	}
 }
+
+func TestEvaluateHandlesQuotedCacheControlValues(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://api.test/items", nil)
+	tests := []struct {
+		name         string
+		cacheControl string
+		wantTTL      time.Duration
+		wantReason   string
+	}{
+		{"comma inside quoted extension", `custom="a, max-age=10", max-age=60`, time.Minute, "cacheable"},
+		{"escaped quote and comma", `custom="a\", max-age=10", max-age=90`, 90 * time.Second, "cacheable"},
+		{"quoted directive name", `custom="no-store, private", max-age=120`, 2 * time.Minute, "cacheable"},
+		{"unterminated quoted value", `custom="a, max-age=60`, 0, "invalid_cache_control"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			decision := Evaluate(req, http.StatusOK, http.Header{"Cache-Control": {tc.cacheControl}}, time.Second)
+			if decision.Reason != tc.wantReason || decision.TTL != tc.wantTTL || decision.Cacheable != (tc.wantReason == "cacheable") {
+				t.Fatalf("decision = %#v", decision)
+			}
+		})
+	}
+}
+
+func TestRequestEligibleRejectsMalformedCacheControl(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://api.test/items", nil)
+	req.Header.Set("Cache-Control", `custom="unterminated`)
+	if eligible, reason := RequestEligible(req); eligible || reason != "request_cache_control" {
+		t.Fatalf("eligible = %t, reason = %q", eligible, reason)
+	}
+}

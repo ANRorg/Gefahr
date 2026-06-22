@@ -40,7 +40,8 @@ func RequestEligible(r *http.Request) (bool, string) {
 		}
 	}
 	cacheControl := cacheControlValue(r.Header)
-	if hasDirective(cacheControl, "no-cache") || hasDirective(cacheControl, "no-store") || hasDirective(cacheControl, "max-age") || hasDirective(cacheControl, "min-fresh") || strings.Contains(strings.ToLower(strings.Join(r.Header.Values("Pragma"), ",")), "no-cache") {
+	directives, valid := splitCacheControl(cacheControl)
+	if !valid || hasDirective(directives, "no-cache") || hasDirective(directives, "no-store") || hasDirective(directives, "max-age") || hasDirective(directives, "min-fresh") || strings.Contains(strings.ToLower(strings.Join(r.Header.Values("Pragma"), ",")), "no-cache") {
 		return false, "request_cache_control"
 	}
 	return true, "eligible"
@@ -61,18 +62,22 @@ func Evaluate(r *http.Request, status int, header http.Header, defaultTTL time.D
 		return Decision{Reason: "vary"}
 	}
 	cacheControl := cacheControlValue(header)
+	directives, valid := splitCacheControl(cacheControl)
+	if !valid {
+		return Decision{Reason: "invalid_cache_control"}
+	}
 	for _, directive := range []string{"no-store", "private", "no-cache"} {
-		if hasDirective(cacheControl, directive) {
+		if hasDirective(directives, directive) {
 			return Decision{Reason: directive}
 		}
 	}
 	ttl := defaultTTL
-	if seconds, present, valid := directiveSeconds(cacheControl, "s-maxage"); present {
+	if seconds, present, valid := directiveSeconds(directives, "s-maxage"); present {
 		if !valid || !durationSecondsValid(seconds) {
 			return Decision{Reason: "invalid_freshness"}
 		}
 		ttl = time.Duration(seconds) * time.Second
-	} else if seconds, present, valid := directiveSeconds(cacheControl, "max-age"); present {
+	} else if seconds, present, valid := directiveSeconds(directives, "max-age"); present {
 		if !valid || !durationSecondsValid(seconds) {
 			return Decision{Reason: "invalid_freshness"}
 		}
@@ -99,8 +104,8 @@ func Evaluate(r *http.Request, status int, header http.Header, defaultTTL time.D
 	return Decision{Cacheable: true, TTL: ttl, Reason: "cacheable"}
 }
 
-func hasDirective(value, name string) bool {
-	for _, part := range strings.Split(value, ",") {
+func hasDirective(directives []string, name string) bool {
+	for _, part := range directives {
 		if strings.TrimSpace(strings.SplitN(part, "=", 2)[0]) == name {
 			return true
 		}
@@ -108,10 +113,10 @@ func hasDirective(value, name string) bool {
 	return false
 }
 
-// directiveSeconds extracts and parses a numeric directive value from a comma-separated directive string. It locates the directive matching the given name and returns its parsed integer value. Returns (seconds, present, valid) where present is true if the directive was found, and valid is true if the directive was found and has a valid non-negative integer value.
-func directiveSeconds(value, name string) (seconds int64, present, valid bool) {
+// directiveSeconds extracts a unique non-negative numeric directive value.
+func directiveSeconds(directives []string, name string) (seconds int64, present, valid bool) {
 	var found bool
-	for _, part := range strings.Split(value, ",") {
+	for _, part := range directives {
 		pieces := strings.SplitN(part, "=", 2)
 		if strings.TrimSpace(pieces[0]) != name {
 			continue
@@ -130,6 +135,38 @@ func directiveSeconds(value, name string) (seconds int64, present, valid bool) {
 		seconds = parsed
 	}
 	return seconds, found, found
+}
+
+// splitCacheControl separates directives without treating commas inside quoted
+// strings as list delimiters. Backslash escapes are meaningful inside quotes.
+func splitCacheControl(value string) ([]string, bool) {
+	parts := make([]string, 0, strings.Count(value, ",")+1)
+	start := 0
+	inQuotes := false
+	escaped := false
+	for index := range len(value) {
+		character := value[index]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if inQuotes && character == '\\' {
+			escaped = true
+			continue
+		}
+		if character == '"' {
+			inQuotes = !inQuotes
+			continue
+		}
+		if character == ',' && !inQuotes {
+			parts = append(parts, value[start:index])
+			start = index + 1
+		}
+	}
+	if inQuotes || escaped {
+		return nil, false
+	}
+	return append(parts, value[start:]), true
 }
 
 func cacheControlValue(header http.Header) string {

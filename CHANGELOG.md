@@ -5,6 +5,11 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- Parse Cache-Control directive lists without splitting commas inside quoted
+  extension values, including escaped quotes, and reject malformed quotes.
+
 ## [1.0.0] - 2026-06-22
 
 ### Added
