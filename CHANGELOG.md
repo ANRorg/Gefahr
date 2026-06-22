@@ -5,6 +5,8 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-22
+
 ### Added
 
 - Host and longest-path-prefix routing.

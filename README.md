@@ -1,6 +1,7 @@
 # Gefahr
 
 [![CI](https://github.com/anouar/goproxy/actions/workflows/ci.yml/badge.svg)](https://github.com/anouar/goproxy/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Gefahr is a configurable Go reverse proxy with host/path routing, round-robin
 and least-connections balancing, active and passive health tracking, bounded
@@ -97,3 +98,7 @@ caching, cache revalidation, `Vary` variants, a mutation API, or per-route
 authentication. The response write timeout limits very long-lived streams;
 WebSocket-specific behavior is not an acceptance target. See
 [security and limitations](docs/security.md).
+
+## License
+
+GoProxy is licensed under the [Apache License 2.0](LICENSE).
