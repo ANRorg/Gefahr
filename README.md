@@ -1,7 +1,6 @@
 # Gefahr
 
-[![CI](https://github.com/anouar/goproxy/actions/workflows/ci.yml/badge.svg)](https://github.com/anouar/goproxy/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/anouar/gefahr/ci.yml?branch=main&style=flat-square)](https://github.com/anouar/gefahr/actions/workflows/ci.yml) [![Go Version](https://img.shields.io/github/go-mod/go-version/anouar/gefahr?style=flat-square)](go.mod) [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE) [![Go Report Card](https://goreportcard.com/badge/github.com/anouar/gefahr?style=flat-square)](https://goreportcard.com/report/github.com/anouar/gefahr) [![codecov](https://img.shields.io/codecov/c/github/anouar/gefahr?style=flat-square)](https://codecov.io/gh/anouar/gefahr)
 
 Gefahr is a configurable Go reverse proxy with host/path routing, round-robin
 and least-connections balancing, active and passive health tracking, bounded
