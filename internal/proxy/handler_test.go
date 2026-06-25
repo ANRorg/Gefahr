@@ -82,6 +82,89 @@ func TestHandlerRejectsAmbiguousRequestPaths(t *testing.T) {
 	}
 }
 
+func TestHandlerEnforcesRoutePolicy(t *testing.T) {
+	tests := []struct {
+		name      string
+		policy    config.RoutePolicy
+		method    string
+		target    string
+		headers   http.Header
+		status    int
+		code      string
+		wantAllow string
+	}{
+		{
+			name:      "method allowlist",
+			policy:    config.RoutePolicy{AllowedMethods: []string{http.MethodGet, http.MethodHead}},
+			method:    http.MethodPost,
+			target:    "http://api.test/api",
+			status:    http.StatusMethodNotAllowed,
+			code:      policyReasonMethodNotAllowed,
+			wantAllow: "GET, HEAD",
+		},
+		{
+			name:   "denied path prefix",
+			policy: config.RoutePolicy{DeniedPathPrefixes: []string{"/api/admin"}},
+			method: http.MethodGet,
+			target: "http://api.test/api/admin/users",
+			status: http.StatusForbidden,
+			code:   policyReasonPathDenied,
+		},
+		{
+			name:   "missing required header",
+			policy: config.RoutePolicy{RequiredHeaders: []string{"X-Verified-Client"}},
+			method: http.MethodGet,
+			target: "http://api.test/api",
+			status: http.StatusBadRequest,
+			code:   policyReasonRequiredHeaderMissing,
+		},
+		{
+			name:    "denied header",
+			policy:  config.RoutePolicy{DeniedHeaders: []string{"X-Debug-Bypass"}},
+			method:  http.MethodGet,
+			target:  "http://api.test/api",
+			headers: http.Header{"X-Debug-Bypass": {"1"}},
+			status:  http.StatusForbidden,
+			code:    policyReasonHeaderDenied,
+		},
+		{
+			name:   "query too large",
+			policy: config.RoutePolicy{MaxQueryBytes: 4},
+			method: http.MethodGet,
+			target: "http://api.test/api?abcde",
+			status: http.StatusRequestURITooLong,
+			code:   policyReasonQueryTooLarge,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := proxyConfig()
+			cfg.Routes[0].Policy = tt.policy
+			h, err := NewHandler(cfg, roundTripFunc(func(*http.Request) (*http.Response, error) {
+				t.Fatal("transport called")
+				return nil, nil
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(tt.method, tt.target, nil)
+			for name, values := range tt.headers {
+				for _, value := range values {
+					req.Header.Add(name, value)
+				}
+			}
+			recorder := httptest.NewRecorder()
+			h.ServeHTTP(recorder, req)
+			if recorder.Code != tt.status || !strings.Contains(recorder.Body.String(), tt.code) {
+				t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
+			}
+			if got := recorder.Header().Get("Allow"); got != tt.wantAllow {
+				t.Fatalf("Allow = %q", got)
+			}
+		})
+	}
+}
+
 func TestHandlerReplacesUntrustedForwardingHeaders(t *testing.T) {
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if got := r.Header.Get("X-Forwarded-For"); got != "192.0.2.10" {
@@ -445,6 +528,25 @@ func TestHandlerObservesRateLimitDecisions(t *testing.T) {
 	}
 }
 
+func TestHandlerObservesPolicyDenials(t *testing.T) {
+	cfg := proxyConfig()
+	cfg.Routes[0].Policy = config.RoutePolicy{DeniedPathPrefixes: []string{"/api/admin"}}
+	observer := &recordingObserver{}
+	h, err := NewHandler(cfg, roundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("transport called")
+		return nil, nil
+	}), WithObserver(observer))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "http://api.test/api/admin", nil))
+
+	if got := strings.Join(observer.policyDenials, ","); got != "api:path_denied" {
+		t.Fatalf("policy denials = %q", got)
+	}
+}
+
 func TestHandlerRateLimitUsesTrustedClientIdentity(t *testing.T) {
 	cfg := proxyConfig()
 	cfg.ClientIP.TrustedProxies = []string{"10.0.0.0/8"}
@@ -513,6 +615,7 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 
 type recordingObserver struct {
 	rateLimitDecisions []string
+	policyDenials      []string
 }
 
 func (o *recordingObserver) ObserveRequest(string, string, string, string, string, int, int, string, time.Duration) {
@@ -520,4 +623,8 @@ func (o *recordingObserver) ObserveRequest(string, string, string, string, strin
 
 func (o *recordingObserver) ObserveRateLimit(route, decision string) {
 	o.rateLimitDecisions = append(o.rateLimitDecisions, route+":"+decision)
+}
+
+func (o *recordingObserver) ObservePolicyDeny(route, reason string) {
+	o.policyDenials = append(o.policyDenials, route+":"+reason)
 }

@@ -5,7 +5,8 @@
 - `/livez` reports process lifecycle.
 - `/readyz` succeeds only when every configured pool has a healthy backend.
 - `/metrics` uses Prometheus text exposition with request, duration, cache,
-  rate-limit decision, retry, backend health, and active-request series.
+  request-policy denial, rate-limit decision, retry, backend health, and
+  active-request series.
 
 The container image checks `/readyz` with `goproxy -healthcheck URL`. This mode
 uses direct HTTP connections, rejects redirects and non-200 responses, and
@@ -42,6 +43,7 @@ those cases. `429` indicates a configured route rate limit. `502` indicates a
 transport failure; `504` indicates the upstream deadline elapsed.
 
 Monitor backend health, retry rate, 5xx rate, cache outcomes, request latency,
+`goproxy_policy_denials_total`,
 `goproxy_rate_limit_decisions_total{decision="limited"}`, process memory, and
 goroutine count. Repeated backend flapping usually means probe thresholds are
 too aggressive or the health endpoint is not representative.

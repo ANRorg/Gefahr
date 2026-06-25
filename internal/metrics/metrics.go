@@ -21,6 +21,7 @@ type requestKey struct {
 type cacheKey struct{ route, result string }
 type backendKey struct{ pool, backend string }
 type rateLimitKey struct{ route, decision string }
+type policyDenyKey struct{ route, reason string }
 
 // Metrics stores counters and gauges whose labels come only from validated
 // configuration or bounded enums, preventing attacker-controlled cardinality.
@@ -31,6 +32,7 @@ type Metrics struct {
 	durationSum     map[string]float64
 	cache           map[cacheKey]uint64
 	rateLimits      map[rateLimitKey]uint64
+	policyDenials   map[policyDenyKey]uint64
 	retries         map[string]uint64
 	health          map[backendKey]float64
 	active          map[backendKey]int64
@@ -41,7 +43,7 @@ type Metrics struct {
 
 // New creates an empty metrics registry.
 func New() *Metrics {
-	return &Metrics{requests: map[requestKey]uint64{}, durationCount: map[string]uint64{}, durationSum: map[string]float64{}, cache: map[cacheKey]uint64{}, rateLimits: map[rateLimitKey]uint64{}, retries: map[string]uint64{}, health: map[backendKey]float64{}, active: map[backendKey]int64{}, allowedRoutes: map[string]bool{}, allowedBackends: map[backendKey]bool{}}
+	return &Metrics{requests: map[requestKey]uint64{}, durationCount: map[string]uint64{}, durationSum: map[string]float64{}, cache: map[cacheKey]uint64{}, rateLimits: map[rateLimitKey]uint64{}, policyDenials: map[policyDenyKey]uint64{}, retries: map[string]uint64{}, health: map[backendKey]float64{}, active: map[backendKey]int64{}, allowedRoutes: map[string]bool{}, allowedBackends: map[backendKey]bool{}}
 }
 
 // Handler exposes metrics in the Prometheus text exposition format.
@@ -91,6 +93,26 @@ func boundedRateLimitDecision(decision string) string {
 	switch decision {
 	case "allowed", "limited":
 		return decision
+	default:
+		return "other"
+	}
+}
+
+// ObservePolicyDeny records one configured route request-policy denial.
+func (m *Metrics) ObservePolicyDeny(route, reason string) {
+	reason = boundedPolicyReason(reason)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.reconciled && !m.allowedRoutes[route] && route != "unmatched" {
+		route = "retired"
+	}
+	m.policyDenials[policyDenyKey{route, reason}]++
+}
+
+func boundedPolicyReason(reason string) string {
+	switch reason {
+	case "method_not_allowed", "path_denied", "required_header_missing", "header_denied", "query_too_large":
+		return reason
 	default:
 		return "other"
 	}
@@ -157,6 +179,11 @@ func (m *Metrics) ReconcileConfig(cfg config.Config) {
 			delete(m.rateLimits, key)
 		}
 	}
+	for key := range m.policyDenials {
+		if !routes[key.route] && key.route != "unmatched" && key.route != "retired" {
+			delete(m.policyDenials, key)
+		}
+	}
 	for route := range m.retries {
 		if !routes[route] && route != "unmatched" && route != "retired" {
 			delete(m.retries, route)
@@ -182,6 +209,7 @@ func (m *Metrics) lines() []string {
 		"# HELP goproxy_request_duration_seconds Public request duration.", "# TYPE goproxy_request_duration_seconds summary",
 		"# HELP goproxy_cache_requests_total Cache outcomes for public requests.", "# TYPE goproxy_cache_requests_total counter",
 		"# HELP goproxy_rate_limit_decisions_total Per-route rate-limit admission decisions.", "# TYPE goproxy_rate_limit_decisions_total counter",
+		"# HELP goproxy_policy_denials_total Per-route request-policy denials.", "# TYPE goproxy_policy_denials_total counter",
 		"# HELP goproxy_retries_total Upstream retry attempts.", "# TYPE goproxy_retries_total counter",
 		"# HELP goproxy_backend_healthy Whether a backend is eligible for traffic.", "# TYPE goproxy_backend_healthy gauge",
 		"# HELP goproxy_backend_active_requests Requests currently assigned to a backend.", "# TYPE goproxy_backend_active_requests gauge",
@@ -202,6 +230,9 @@ func (m *Metrics) lines() []string {
 	}
 	for key, value := range m.rateLimits {
 		lines = append(lines, fmt.Sprintf("goproxy_rate_limit_decisions_total{decision=%s,route=%s} %d", quote(key.decision), quote(key.route), value))
+	}
+	for key, value := range m.policyDenials {
+		lines = append(lines, fmt.Sprintf("goproxy_policy_denials_total{reason=%s,route=%s} %d", quote(key.reason), quote(key.route), value))
 	}
 	for route, value := range m.retries {
 		lines = append(lines, fmt.Sprintf("goproxy_retries_total{route=%s} %d", quote(route), value))

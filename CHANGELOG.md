@@ -12,7 +12,10 @@ Semantic Versioning.
 - Add optional bearer-token authentication for admin endpoints through
   `admin.auth_token_env`.
 - Add structured admin audit logs for operational endpoint access.
+- Add per-route request policy guardrails for allowed methods, denied path
+  prefixes, required/denied headers, and query-string size.
 - Add per-route, per-client fixed-window rate limiting.
+- Add bounded Prometheus metrics for per-route request-policy denials.
 - Add bounded Prometheus metrics for per-route rate-limit admission decisions.
 - Add trusted-proxy-aware client identity extraction for rate limiting and
   rebuilt forwarding headers.

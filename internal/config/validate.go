@@ -13,6 +13,7 @@ import (
 var (
 	identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
 	envNamePattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	httpTokenPattern  = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 )
 
 // Validate reports all configuration errors that can be checked without
@@ -90,6 +91,7 @@ func Validate(cfg Config) error {
 		if route.Strategy != "round_robin" && route.Strategy != "least_connections" {
 			errs = append(errs, fmt.Errorf("%s.strategy must be round_robin or least_connections", field))
 		}
+		errs = append(errs, validateRoutePolicy(field+".policy", route.Policy)...)
 		if route.RateLimit.Enabled {
 			if route.RateLimit.Requests <= 0 || route.RateLimit.Window <= 0 {
 				errs = append(errs, fmt.Errorf("%s.rate_limit requires positive requests and window", field))
@@ -194,6 +196,76 @@ func Validate(cfg Config) error {
 		errs = append(errs, errors.New("logging.level must be debug, info, warn, or error"))
 	}
 	return errors.Join(errs...)
+}
+
+func validateRoutePolicy(field string, policy RoutePolicy) []error {
+	var errs []error
+	const (
+		maxAllowedMethods = 32
+		maxPathPrefixes   = 128
+		maxPolicyHeaders  = 64
+		maxQueryBytes     = 1 << 20
+	)
+	if len(policy.AllowedMethods) > maxAllowedMethods {
+		errs = append(errs, fmt.Errorf("%s.allowed_methods must not exceed %d entries", field, maxAllowedMethods))
+	}
+	seenMethods := map[string]bool{}
+	for i, method := range policy.AllowedMethods {
+		if method != strings.TrimSpace(method) || method == "" || !httpTokenPattern.MatchString(method) || method != strings.ToUpper(method) {
+			errs = append(errs, fmt.Errorf("%s.allowed_methods[%d] must be an uppercase HTTP token", field, i))
+		}
+		if seenMethods[method] {
+			errs = append(errs, fmt.Errorf("%s.allowed_methods contains duplicate method %q", field, method))
+		}
+		seenMethods[method] = true
+	}
+	if len(policy.DeniedPathPrefixes) > maxPathPrefixes {
+		errs = append(errs, fmt.Errorf("%s.denied_path_prefixes must not exceed %d entries", field, maxPathPrefixes))
+	}
+	seenPaths := map[string]bool{}
+	for i, prefix := range policy.DeniedPathPrefixes {
+		if prefix != strings.TrimSpace(prefix) || prefix == "" || !strings.HasPrefix(prefix, "/") || strings.ContainsAny(prefix, "?#") || ambiguousPath(prefix) {
+			errs = append(errs, fmt.Errorf("%s.denied_path_prefixes[%d] must start with / and avoid ambiguous separators or segments", field, i))
+		}
+		if seenPaths[prefix] {
+			errs = append(errs, fmt.Errorf("%s.denied_path_prefixes contains duplicate prefix %q", field, prefix))
+		}
+		seenPaths[prefix] = true
+	}
+	errs = append(errs, validateHeaderList(field, "required_headers", policy.RequiredHeaders, maxPolicyHeaders)...)
+	errs = append(errs, validateHeaderList(field, "denied_headers", policy.DeniedHeaders, maxPolicyHeaders)...)
+	deniedHeaders := map[string]bool{}
+	for _, header := range policy.DeniedHeaders {
+		deniedHeaders[strings.ToLower(header)] = true
+	}
+	for _, header := range policy.RequiredHeaders {
+		if deniedHeaders[strings.ToLower(header)] {
+			errs = append(errs, fmt.Errorf("%s header %q cannot be both required and denied", field, header))
+		}
+	}
+	if policy.MaxQueryBytes < 0 || policy.MaxQueryBytes > maxQueryBytes {
+		errs = append(errs, fmt.Errorf("%s.max_query_bytes must be between 0 and %d", field, maxQueryBytes))
+	}
+	return errs
+}
+
+func validateHeaderList(field, name string, headers []string, maxEntries int) []error {
+	var errs []error
+	if len(headers) > maxEntries {
+		errs = append(errs, fmt.Errorf("%s.%s must not exceed %d entries", field, name, maxEntries))
+	}
+	seen := map[string]bool{}
+	for i, header := range headers {
+		normalized := strings.ToLower(header)
+		if header != strings.TrimSpace(header) || header == "" || !httpTokenPattern.MatchString(header) {
+			errs = append(errs, fmt.Errorf("%s.%s[%d] must be an HTTP header token", field, name, i))
+		}
+		if seen[normalized] {
+			errs = append(errs, fmt.Errorf("%s.%s contains duplicate header %q", field, name, header))
+		}
+		seen[normalized] = true
+	}
+	return errs
 }
 
 func normalizedHost(host string) string {

@@ -57,6 +57,30 @@ func TestValidateRejectsInvalidRateLimit(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsInvalidRoutePolicy(t *testing.T) {
+	tests := []func(*Config){
+		func(cfg *Config) { cfg.Routes[0].Policy.AllowedMethods = []string{"get"} },
+		func(cfg *Config) { cfg.Routes[0].Policy.AllowedMethods = []string{"GET", "GET"} },
+		func(cfg *Config) { cfg.Routes[0].Policy.DeniedPathPrefixes = []string{"admin"} },
+		func(cfg *Config) { cfg.Routes[0].Policy.DeniedPathPrefixes = []string{"/safe/../admin"} },
+		func(cfg *Config) { cfg.Routes[0].Policy.RequiredHeaders = []string{"X Envoy"} },
+		func(cfg *Config) { cfg.Routes[0].Policy.DeniedHeaders = []string{" X-Debug"} },
+		func(cfg *Config) {
+			cfg.Routes[0].Policy.RequiredHeaders = []string{"X-Gateway"}
+			cfg.Routes[0].Policy.DeniedHeaders = []string{"x-gateway"}
+		},
+		func(cfg *Config) { cfg.Routes[0].Policy.MaxQueryBytes = -1 },
+		func(cfg *Config) { cfg.Routes[0].Policy.MaxQueryBytes = (1 << 20) + 1 },
+	}
+	for i, mutate := range tests {
+		cfg := validConfig()
+		mutate(&cfg)
+		if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "policy") {
+			t.Fatalf("case %d error = %v", i, err)
+		}
+	}
+}
+
 func TestValidateRejectsInvalidClientIPPolicy(t *testing.T) {
 	tests := []func(*Config){
 		func(cfg *Config) { cfg.ClientIP.TrustedProxies = []string{"10.0.0.0"} },

@@ -14,11 +14,12 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 | Load balancing | Shipped | Round-robin and least-connections balancers are implemented with no-healthy-backend handling and race-tested unit coverage. |
 | Health | Shipped | Active probes and passive transport-failure ejection update backend eligibility; readiness requires every pool to have a healthy backend. |
 | Caching | Shipped | The shared cache is TTL-based, LRU-bounded by entry count and bytes, and rejects unsafe methods, personalized requests, `Set-Cookie`, `private`, `no-store`, `no-cache`, malformed freshness directives, and `Vary` responses. |
+| Request policy | Shipped | Per-route static guardrails can allowlist methods, deny path prefixes, require or deny headers, cap query-string bytes, and emit bounded denial metrics before backend admission. |
 | TLS | Shipped | Public listeners can terminate static PEM certificates with TLS 1.2 minimum; HTTPS upstreams support custom CA files, SNI override, and client certificates for mTLS. |
 | Limits and timeouts | Shipped | Public servers enforce header, body, concurrency, connection, idle, read, write, upstream dial, upstream response, trusted-client route rate-limit, and shutdown bounds. |
 | Reload | Shipped | `SIGHUP` validates and stages a complete replacement snapshot before atomic publication; rejected reloads retain the previous snapshot. |
-| Observability | Shipped | JSON request logs, admin audit logs, `/livez`, `/readyz`, `/metrics`, request metrics, cache metrics, rate-limit decision metrics, retry metrics, and backend health/active gauges are implemented. |
-| Test coverage | Shipped | `make coverage` and CI enforce an 85% repository coverage floor; the current measured total is 87.8%. |
+| Observability | Shipped | JSON request logs, admin audit logs, `/livez`, `/readyz`, `/metrics`, request metrics, cache metrics, policy-denial metrics, rate-limit decision metrics, retry metrics, and backend health/active gauges are implemented. |
+| Test coverage | Shipped | `make coverage` and CI enforce an 85% repository coverage floor; the current measured total is 88.1%. |
 | Admin auth | Shipped | Admin endpoints can require a bearer token loaded from an environment variable via `admin.auth_token_env`. |
 | Compatibility | Shipped | The real-socket integration suite covers cleartext HTTP/1.1 clients, TLS HTTP/2 clients, cleartext HTTP/1.1 upstreams, and HTTPS HTTP/2 upstreams; the documented matrix records supported and unsupported paths. |
 | Kubernetes baseline | Shipped | A hardened manifest includes secret-backed admin auth, exec probes, read-only non-root pods, restricted admin networking, services, and a PodDisruptionBudget. |
@@ -30,7 +31,7 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 
 | Gap | Why it matters |
 |---|---|
-| Traffic protection | Per-route rate limiting exists, but there is no WAF, bot classification, or adaptive abuse-control policy. |
+| Traffic protection | Static per-route request guardrails and rate limiting exist, but there is no full WAF rule engine, bot classification, or adaptive abuse-control policy. |
 | Access-control model | Admin auth is bearer-token only and audited; there is no role model or integration with external identity providers. |
 | Release packaging | Tagged archives, images, SBOMs, and attestations exist; package-manager manifests and cosign signatures are not included. |
 

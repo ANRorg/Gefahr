@@ -15,6 +15,18 @@ routes:
     strategy: round_robin
     cache:
       enabled: true
+    policy:
+      allowed_methods:
+        - GET
+        - HEAD
+        - POST
+      denied_path_prefixes:
+        - /internal
+        - /debug
+      required_headers: []
+      denied_headers:
+        - X-Debug-Bypass
+      max_query_bytes: 4096
     rate_limit:
       enabled: true
       requests: 300

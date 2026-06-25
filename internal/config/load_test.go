@@ -13,6 +13,16 @@ routes:
     path_prefix: /
     pool: api
     strategy: round_robin
+    policy:
+      allowed_methods:
+        - GET
+      denied_path_prefixes:
+        - /admin
+      required_headers:
+        - X-Envoy-External-Address
+      denied_headers:
+        - X-Debug-Bypass
+      max_query_bytes: 128
     rate_limit:
       enabled: true
       requests: 100
@@ -54,6 +64,9 @@ func TestLoadAppliesDefaultsAndDurations(t *testing.T) {
 	}
 	if cfg.Routes[0].RateLimit.Requests != 100 || cfg.Routes[0].RateLimit.Window.Value() != time.Minute {
 		t.Fatalf("rate limit = %+v", cfg.Routes[0].RateLimit)
+	}
+	if cfg.Routes[0].Policy.AllowedMethods[0] != "GET" || cfg.Routes[0].Policy.MaxQueryBytes != 128 {
+		t.Fatalf("policy = %+v", cfg.Routes[0].Policy)
 	}
 	if cfg.Pools["api"].TLS.ServerName != "api.internal" {
 		t.Fatalf("pool tls = %+v", cfg.Pools["api"].TLS)

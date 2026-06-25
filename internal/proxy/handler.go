@@ -136,6 +136,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	pool := h.pools[route.Pool]
 	routeName = route.Name
+	if denial, denied := evaluateRoutePolicy(route.Policy, r); denied {
+		h.observePolicyDeny(route.Name, denial.code)
+		if len(denial.allowMethods) > 0 {
+			w.Header().Set("Allow", strings.Join(denial.allowMethods, ", "))
+		}
+		writeError(w, denial.status, denial.code, denial.message)
+		return
+	}
 	clientIP := h.clientIP.Identity(r)
 	if limiter := h.rateLimiters[route.Name]; limiter != nil {
 		if allowed, retryAfter := limiter.Allow(clientIP); !allowed {
@@ -245,6 +253,19 @@ func (h *Handler) observeRateLimit(route string, allowed bool) {
 		decision = "limited"
 	}
 	observer.ObserveRateLimit(route, decision)
+}
+
+func (h *Handler) observePolicyDeny(route, reason string) {
+	if h.observer == nil {
+		return
+	}
+	observer, ok := h.observer.(interface {
+		ObservePolicyDeny(route, reason string)
+	})
+	if !ok {
+		return
+	}
+	observer.ObservePolicyDeny(route, reason)
 }
 
 func writeCached(w http.ResponseWriter, response responsecache.Response) {

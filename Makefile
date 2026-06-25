@@ -1,4 +1,4 @@
-.PHONY: build test test-race coverage test-integration test-integration-race load-check check acceptance
+.PHONY: build test test-race coverage test-integration test-integration-race load-check docs docs-preview check acceptance
 
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -26,6 +26,12 @@ test-integration-race:
 
 load-check:
 	go run ./cmd/loadcheck
+
+docs:
+	cd gefahr-docs && npm ci && npm run build
+
+docs-preview:
+	cd gefahr-docs && npm run preview
 
 check:
 	test -z "$$(gofmt -l $$(git ls-files '*.go'))"

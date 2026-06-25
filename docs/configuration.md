@@ -39,6 +39,12 @@ An empty host is a catch-all. `path_prefix` must begin with `/`; `/api` matches
 `strategy` is `round_robin` or `least_connections`. `rewrite_host: true` sends
 the selected backend host; the default preserves the original request host.
 `cache.enabled` opts the route into conservative shared response caching.
+`policy` applies static request guardrails before rate limiting, cache lookup,
+or backend selection. `allowed_methods` is an optional uppercase HTTP method
+allowlist. `denied_path_prefixes` blocks exact path-prefix boundaries such as
+`/admin` and `/admin/...`. `required_headers` requires a non-empty request
+header, `denied_headers` rejects requests containing listed headers, and
+`max_query_bytes` rejects oversized raw query strings when non-zero.
 `rate_limit.enabled` applies a per-route, per-client fixed-window limit.
 `requests` and `window` set the budget, while `max_keys` bounds the number of
 tracked client identities and defaults to 10000 when omitted.
@@ -73,7 +79,7 @@ overrides SNI and certificate hostname verification. `tls.client_cert_file` and
 only be used for isolated diagnostics.
 
 Unknown fields, duplicate routes/listeners, nonexistent pool references,
-invalid URLs, incomplete upstream TLS pairs, invalid trusted proxy CIDRs,
-non-positive limits, and invalid durations are rejected together with
-field-oriented errors. Route, pool, and backend identifiers use at most 128
-ASCII letters, digits, dots, underscores, and hyphens.
+invalid URLs, incomplete upstream TLS pairs, invalid route policies, invalid
+trusted proxy CIDRs, non-positive limits, and invalid durations are rejected
+together with field-oriented errors. Route, pool, and backend identifiers use at
+most 128 ASCII letters, digits, dots, underscores, and hyphens.

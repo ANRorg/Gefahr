@@ -1,7 +1,12 @@
 bin/
 dist/
+node_modules/
+gefahr-docs/dist/
+gefahr-docs/src/generated/
+gefahr-docs/*.tsbuildinfo
+gefahr-docs/vite.config.d.ts
+gefahr-docs/vite.config.js
 coverage.out
 *.pem
 *.key
 .env
-

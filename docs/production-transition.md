@@ -21,6 +21,8 @@ path, observability, and rollback process are ready together.
   behavior.
 - `limits.*` values are sized for production traffic and host capacity.
 - `client_ip.trusted_proxies` contains only ingress/load-balancer source CIDRs.
+- Per-route `policy` guardrails match the public API contract and ingress
+  behavior.
 - Per-route rate limits are configured only where the operational owner accepts
   the budget.
 - Upstream TLS CA/SNI/client certificate settings are validated in staging.
@@ -42,10 +44,11 @@ path, observability, and rollback process are ready together.
 - Logs are collected and searchable by request ID.
 - Admin audit logs are searchable by `auth`, `path`, and `remote_addr`.
 - Dashboards include request rate, status codes, latency, retries, backend
-  health, active backend requests, cache outcomes, rate-limit decisions, memory,
-  and goroutines.
+  health, active backend requests, cache outcomes, policy denials, rate-limit
+  decisions, memory, and goroutines.
 - Alerts exist for readiness failure, elevated 5xx, rising retries, no healthy
-  upstream, overload, unexpected 429s, and unauthorized admin access.
+  upstream, overload, unexpected policy denials, unexpected 429s, and
+  unauthorized admin access.
 
 ## Rollout
 

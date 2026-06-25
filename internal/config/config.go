@@ -57,19 +57,30 @@ type Admin struct {
 
 // Route maps an incoming host and path prefix to a backend pool.
 type Route struct {
-	Name        string     `yaml:"name"`
-	Host        string     `yaml:"host"`
-	PathPrefix  string     `yaml:"path_prefix"`
-	Pool        string     `yaml:"pool"`
-	Strategy    string     `yaml:"strategy"`
-	RewriteHost bool       `yaml:"rewrite_host"`
-	Cache       RouteCache `yaml:"cache"`
-	RateLimit   RateLimit  `yaml:"rate_limit"`
+	Name        string      `yaml:"name"`
+	Host        string      `yaml:"host"`
+	PathPrefix  string      `yaml:"path_prefix"`
+	Pool        string      `yaml:"pool"`
+	Strategy    string      `yaml:"strategy"`
+	RewriteHost bool        `yaml:"rewrite_host"`
+	Cache       RouteCache  `yaml:"cache"`
+	Policy      RoutePolicy `yaml:"policy"`
+	RateLimit   RateLimit   `yaml:"rate_limit"`
 }
 
 // RouteCache controls response caching for a route.
 type RouteCache struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+// RoutePolicy applies bounded request admission rules before a route reaches
+// rate limiting, cache lookup, or a backend.
+type RoutePolicy struct {
+	AllowedMethods     []string `yaml:"allowed_methods"`
+	DeniedPathPrefixes []string `yaml:"denied_path_prefixes"`
+	RequiredHeaders    []string `yaml:"required_headers"`
+	DeniedHeaders      []string `yaml:"denied_headers"`
+	MaxQueryBytes      int      `yaml:"max_query_bytes"`
 }
 
 // RateLimit controls optional per-client request admission for a route.

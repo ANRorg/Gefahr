@@ -16,6 +16,11 @@ type RateLimitObserver interface {
 	ObserveRateLimit(route, decision string)
 }
 
+// PolicyObserver receives configured route request-policy denials.
+type PolicyObserver interface {
+	ObservePolicyDeny(route, reason string)
+}
+
 // BackendObserver receives backend gauge updates.
 type BackendObserver interface {
 	SetBackendHealth(pool, backend string, healthy bool)
@@ -40,6 +45,15 @@ func (f Fanout) ObserveRateLimit(route, decision string) {
 	for _, observer := range f.Requests {
 		if observer, ok := observer.(RateLimitObserver); ok {
 			observer.ObserveRateLimit(route, decision)
+		}
+	}
+}
+
+// ObservePolicyDeny forwards request-policy denials to capable request observers.
+func (f Fanout) ObservePolicyDeny(route, reason string) {
+	for _, observer := range f.Requests {
+		if observer, ok := observer.(PolicyObserver); ok {
+			observer.ObservePolicyDeny(route, reason)
 		}
 	}
 }

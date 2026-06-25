@@ -16,7 +16,8 @@ drills and evidence templates are tracked in
    known-good version.
 3. Apply to one instance or one rollout batch.
 4. Watch `/readyz`, `goproxy_requests_total`, 5xx rate,
-   `goproxy_retries_total`, backend health gauges, and
+   `goproxy_retries_total`, backend health gauges,
+   `goproxy_policy_denials_total`, and
    `goproxy_rate_limit_decisions_total{decision="limited"}`.
 5. Continue only after readiness is stable and error/retry rates match the
    previous baseline.
@@ -63,6 +64,17 @@ used by production.
    spoofed chain can collapse many users into the wrong identity.
 4. Increase the route budget only after confirming the limit is too low, not
    masking abusive traffic.
+
+## Unexpected Policy Denials
+
+1. Check `goproxy_policy_denials_total` by route and reason.
+2. Compare the active route `policy` with the last known-good configuration.
+3. For `method_not_allowed` and `path_denied`, verify the public API contract
+   and any ingress path rewrites.
+4. For header-related denials, confirm the trusted ingress is still adding or
+   removing the expected headers before traffic reaches Gefahr.
+5. For `query_too_large`, compare legitimate client URLs with the route's
+   `max_query_bytes` and raise the bound only when the upstream accepts it.
 
 ## Admin Access Anomaly
 

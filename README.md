@@ -4,8 +4,8 @@
 
 gefahr is a configurable Go reverse proxy with host/path routing, round-robin
 and least-connections balancing, active and passive health tracking, bounded
-response caching, per-route rate limiting, static TLS termination, upstream TLS
-controls, structured logs, and Prometheus metrics.
+response caching, per-route request policy guardrails and rate limiting, static
+TLS termination, upstream TLS controls, structured logs, and Prometheus metrics.
 
 The data plane uses Go's maintained `httputil.ReverseProxy`; Gefahr owns the
 policy around it. See [the architecture decision](docs/adr/0001-proxy-foundation.md)
@@ -84,6 +84,7 @@ make coverage
 make check
 make test-integration # requires permission to open local TCP listeners
 make acceptance       # static, race, unit, and real-socket integration checks
+make docs             # builds the generated documentation site
 docker compose up --build -d
 make load-check      # exercises the running demonstration stack
 ```
@@ -96,12 +97,17 @@ Every repository commit is intentionally small and independently testable.
 See the [release acceptance procedure](docs/release-acceptance.md) for the
 complete final gate and expected evidence.
 
+The generated documentation portal lives in `gefahr-docs`. It builds from this
+README, `CHANGELOG.md`, and every Markdown file under `docs/`.
+
 ## Security model and limitations
 
 - Client forwarding headers are discarded and rebuilt from the trusted
   connection metadata.
 - Request headers, bodies, network operations, cache memory, and shutdown are
   bounded.
+- Per-route request policies can allowlist methods, deny path prefixes, require
+  or deny headers, and cap query-string bytes.
 - Shared caching bypasses authenticated, cookie-bearing, personalized,
   non-200, `private`, `no-store`, `no-cache`, and `Vary` responses.
 - Static PEM certificates are loaded from deployment storage and must never be
@@ -109,7 +115,8 @@ complete final gate and expected evidence.
 
 Version 1 does not include HTTP/3, ACME, dynamic service discovery, distributed
 caching, cache revalidation, `Vary` variants, a mutation API, WAF behavior, or
-per-route authentication. The response write timeout limits very long-lived
+per-route authentication. Static request policies are not a full WAF or bot
+classification system. The response write timeout limits very long-lived
 streams; WebSocket-specific behavior is not an acceptance target. See
 [security and limitations](docs/security.md).
 
