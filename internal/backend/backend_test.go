@@ -20,6 +20,9 @@ func TestAcquireReleaseIsIdempotent(t *testing.T) {
 
 func TestURLReturnsCopy(t *testing.T) {
 	b := New("one", &url.URL{Scheme: "http", Host: "example.test"})
+	if b.Name() != "one" {
+		t.Fatalf("name = %q", b.Name())
+	}
 	u := b.URL()
 	u.Host = "changed.test"
 	if b.URL().Host != "example.test" {

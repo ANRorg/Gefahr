@@ -37,6 +37,10 @@ func main() {
 }
 
 func run(args []string) error {
+	return runContext(context.Background(), args)
+}
+
+func runContext(parent context.Context, args []string) error {
 	flags := flag.NewFlagSet("goproxy", flag.ContinueOnError)
 	configPath := flags.String("config", "configs/proxy.example.yaml", "path to YAML configuration")
 	healthcheck := flags.String("healthcheck", "", "check an HTTP readiness URL and exit")
@@ -79,7 +83,7 @@ func run(args []string) error {
 		return err
 	}
 
-	signalCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	signalCtx, stopSignals := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer stopSignals()
 	ctx, cancel := context.WithCancel(signalCtx)
 	defer cancel()

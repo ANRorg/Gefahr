@@ -13,6 +13,9 @@ func TestCacheReturnsDefensiveCopyAndExpires(t *testing.T) {
 	if !c.Set("one", Response{Status: 200, Header: http.Header{"X-Test": {"original"}}, Body: []byte("body")}, time.Second) {
 		t.Fatal("set failed")
 	}
+	if c.Bytes() == 0 {
+		t.Fatal("cache byte accounting was not updated")
+	}
 	got, ok := c.Get("one")
 	if !ok {
 		t.Fatal("cache miss")

@@ -36,6 +36,14 @@ func TestObserveRequestBoundsAttackerControlledMethods(t *testing.T) {
 	}
 }
 
+func TestObserveRateLimitBoundsUnknownDecisions(t *testing.T) {
+	m := New()
+	m.ObserveRateLimit("api", "custom")
+	if m.rateLimits[rateLimitKey{"api", "other"}] != 1 {
+		t.Fatalf("rate limit series = %#v", m.rateLimits)
+	}
+}
+
 func TestReconcileConfigBoundsLabelsAcrossReloads(t *testing.T) {
 	m := New()
 	cfg := config.Default()
@@ -50,8 +58,9 @@ func TestReconcileConfigBoundsLabelsAcrossReloads(t *testing.T) {
 	}
 	m.ObserveRequest("", "removed", http.MethodGet, "", "", 200, 1, "bypass", time.Second)
 	m.ObserveRateLimit("removed", "allowed")
+	m.SetBackendActive("removed", "removed", 1)
 	m.SetBackendHealth("removed", "removed", true)
-	if m.requests[requestKey{"retired", http.MethodGet, 200}] != 1 || m.rateLimits[rateLimitKey{"retired", "allowed"}] != 1 || len(m.health) != 0 {
-		t.Fatalf("late labels were not bounded: requests=%v rate_limits=%v health=%v", m.requests, m.rateLimits, m.health)
+	if m.requests[requestKey{"retired", http.MethodGet, 200}] != 1 || m.rateLimits[rateLimitKey{"retired", "allowed"}] != 1 || len(m.health) != 0 || len(m.active) != 0 {
+		t.Fatalf("late labels were not bounded: requests=%v rate_limits=%v health=%v active=%v", m.requests, m.rateLimits, m.health, m.active)
 	}
 }

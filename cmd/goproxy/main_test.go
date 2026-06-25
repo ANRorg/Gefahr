@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anouar/goproxy/internal/config"
 )
@@ -84,6 +90,96 @@ func TestVersionStringIncludesBuildMetadata(t *testing.T) {
 	}
 }
 
+func TestRunHandlesVersionAndHealthcheckFlags(t *testing.T) {
+	if err := run([]string{"-version"}); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("GOPROXY_ADMIN_TOKEN", "secret")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer secret" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	if err := run([]string{"-healthcheck", server.URL}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunRejectsMissingConfig(t *testing.T) {
+	if err := run([]string{"-config", "missing.yaml"}); err == nil {
+		t.Fatal("expected missing config error")
+	}
+}
+
+func TestRunRejectsInvalidFlags(t *testing.T) {
+	if err := run([]string{"-unknown"}); err == nil {
+		t.Fatal("expected flag error")
+	}
+}
+
+func TestRunContextStartsAndStopsServers(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+
+	configPath := filepath.Join(t.TempDir(), "proxy.yaml")
+	yaml := strings.Replace(startupYAML, "{{backend}}", upstream.URL, 1)
+	if err := os.WriteFile(configPath, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runContext(ctx, []string{"-config", configPath}) }()
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("run did not stop")
+	}
+}
+
+func TestSetLogLevel(t *testing.T) {
+	var level slog.LevelVar
+	setLogLevel(&level, "debug")
+	if level.Level() != slog.LevelDebug {
+		t.Fatalf("debug level = %s", level.Level())
+	}
+	setLogLevel(&level, "warn")
+	if level.Level() != slog.LevelWarn {
+		t.Fatalf("warn level = %s", level.Level())
+	}
+	setLogLevel(&level, "error")
+	if level.Level() != slog.LevelError {
+		t.Fatalf("error level = %s", level.Level())
+	}
+	setLogLevel(&level, "unknown")
+	if level.Level() != slog.LevelInfo {
+		t.Fatalf("default level = %s", level.Level())
+	}
+}
+
+func TestAdminTokenDisabledWhenEnvironmentNameEmpty(t *testing.T) {
+	token, err := adminToken(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "" {
+		t.Fatalf("token = %q", token)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -99,3 +195,29 @@ func (b *trackingBody) Close() error {
 	b.closed = true
 	return nil
 }
+
+const startupYAML = `
+listeners:
+  - address: localhost:0
+admin:
+  address: 127.0.0.1:0
+routes:
+  - name: api
+    host: api.test
+    path_prefix: /
+    pool: api
+    strategy: round_robin
+pools:
+  api:
+    backends:
+      - name: one
+        url: {{backend}}
+    health:
+      path: /health
+      interval: 1h
+      timeout: 1s
+      unhealthy_threshold: 1
+      healthy_threshold: 1
+    retry:
+      max_attempts: 1
+`

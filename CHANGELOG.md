@@ -24,6 +24,7 @@ Semantic Versioning.
 - Add a hardened systemd deployment baseline and production runbooks.
 - Add cloud load balancer deployment notes for AWS ALB, Google Cloud
   Application Load Balancer, and Azure Application Gateway.
+- Raise test coverage and enforce an 85% repository coverage floor in CI.
 
 ## [1.0.1] - 2026-06-22
 

@@ -77,6 +77,7 @@ guidance is in [cloud load balancer notes](docs/cloud-load-balancers.md).
 ```sh
 make test
 make test-race
+make coverage
 make check
 make test-integration # requires permission to open local TCP listeners
 make acceptance       # static, race, unit, and real-socket integration checks

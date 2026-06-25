@@ -42,6 +42,17 @@ jobs:
       - name: Run tests with coverage
         run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
+      - name: Enforce coverage floor
+        run: |
+          go tool cover -func=coverage.txt | awk -v min="85.0" '/^total:/ {
+            gsub("%", "", $3)
+            if ($3 + 0 < min) {
+              printf "coverage %.1f%% below %.1f%%\n", $3, min
+              exit 1
+            }
+            printf "coverage %.1f%% >= %.1f%%\n", $3, min
+          }'
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
         with:

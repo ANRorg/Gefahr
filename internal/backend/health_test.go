@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -40,6 +41,43 @@ func TestCheckerMarksFailedEndpointDead(t *testing.T) {
 	checker.CheckOnce(context.Background())
 	if b.Alive() {
 		t.Fatal("failed backend remained alive")
+	}
+}
+
+func TestCheckerRunProbesImmediatelyAndStops(t *testing.T) {
+	target, _ := url.Parse("http://backend.test")
+	b := New("one", target)
+	b.SetAlive(false)
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}, nil
+	})}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	changed := make(chan struct{})
+	var closeOnce sync.Once
+	checker := Checker{
+		Backends: []*Backend{b},
+		Client:   client,
+		Policy:   HealthPolicy{Path: "/health", Interval: time.Hour, Timeout: time.Second, HealthyThreshold: 1, UnhealthyThreshold: 1},
+		OnChange: func(*Backend, bool) {
+			closeOnce.Do(func() { close(changed) })
+		},
+	}
+	done := make(chan struct{})
+	go func() {
+		checker.Run(ctx)
+		close(done)
+	}()
+	select {
+	case <-changed:
+	case <-time.After(time.Second):
+		t.Fatal("checker did not probe immediately")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("checker did not stop")
 	}
 }
 

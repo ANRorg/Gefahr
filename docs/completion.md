@@ -18,6 +18,7 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 | Limits and timeouts | Shipped | Public servers enforce header, body, concurrency, connection, idle, read, write, upstream dial, upstream response, trusted-client route rate-limit, and shutdown bounds. |
 | Reload | Shipped | `SIGHUP` validates and stages a complete replacement snapshot before atomic publication; rejected reloads retain the previous snapshot. |
 | Observability | Shipped | JSON request logs, admin audit logs, `/livez`, `/readyz`, `/metrics`, request metrics, cache metrics, rate-limit decision metrics, retry metrics, and backend health/active gauges are implemented. |
+| Test coverage | Shipped | `make coverage` and CI enforce an 85% repository coverage floor; the current measured total is 87.8%. |
 | Admin auth | Shipped | Admin endpoints can require a bearer token loaded from an environment variable via `admin.auth_token_env`. |
 | Compatibility | Shipped | The real-socket integration suite covers cleartext HTTP/1.1 clients, TLS HTTP/2 clients, cleartext HTTP/1.1 upstreams, and HTTPS HTTP/2 upstreams; the documented matrix records supported and unsupported paths. |
 | Kubernetes baseline | Shipped | A hardened manifest includes secret-backed admin auth, exec probes, read-only non-root pods, restricted admin networking, services, and a PodDisruptionBudget. |
@@ -54,3 +55,4 @@ make acceptance
 
 That command verifies formatting, `go vet`, all unit tests under the race
 detector, and the real-socket integration suite under the race detector.
+Run `make coverage` to verify the repository coverage floor locally.

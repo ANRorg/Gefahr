@@ -27,6 +27,40 @@ func TestTLSConfigRequiresTLS12AndAdvertisesHTTP2(t *testing.T) {
 	}
 }
 
+func TestTLSConfigServesPublishedCertificate(t *testing.T) {
+	store := new(CertificateStore)
+	cfg := writeTestCertificate(t, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	if err := store.Load(cfg); err != nil {
+		t.Fatal(err)
+	}
+	certificate, err := store.TLSConfig().GetCertificate(&tls.ClientHelloInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if certificate.Leaf == nil || certificate.Leaf.Subject.CommonName != "localhost" {
+		t.Fatalf("certificate = %+v", certificate.Leaf)
+	}
+
+	replacement, err := LoadCertificate(writeTestCertificate(t, time.Now().Add(-time.Hour), time.Now().Add(time.Hour)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Publish(replacement)
+	certificate, err = store.TLSConfig().GetCertificate(&tls.ClientHelloInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if certificate != replacement {
+		t.Fatal("published certificate was not served")
+	}
+}
+
+func TestTLSConfigRejectsEmptyStore(t *testing.T) {
+	if _, err := new(CertificateStore).TLSConfig().GetCertificate(&tls.ClientHelloInfo{}); err == nil {
+		t.Fatal("expected empty certificate store error")
+	}
+}
+
 func TestCertificateStoreRejectsMissingPair(t *testing.T) {
 	store := new(CertificateStore)
 	if err := store.Load(config.TLSConfig{CertFile: "missing-cert.pem", KeyFile: "missing-key.pem"}); err == nil {
