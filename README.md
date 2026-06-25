@@ -97,8 +97,8 @@ Every repository commit is intentionally small and independently testable.
 See the [release acceptance procedure](docs/release-acceptance.md) for the
 complete final gate and expected evidence.
 
-The generated documentation portal lives in `gefahr-docs`. It builds from this
-README, `CHANGELOG.md`, and every Markdown file under `docs/`.
+The generated documentation portal lives in `gefahr-docs`. Product-facing docs
+are authored under `gefahr-docs/content` and built into the static site.
 
 ## Security model and limitations
 

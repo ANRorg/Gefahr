@@ -5,16 +5,10 @@ on:
     branches:
       - main
     paths:
-      - "README.md"
-      - "CHANGELOG.md"
-      - "docs/**"
       - "gefahr-docs/**"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
-      - "README.md"
-      - "CHANGELOG.md"
-      - "docs/**"
       - "gefahr-docs/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:

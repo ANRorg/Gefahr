@@ -31,7 +31,7 @@ function App() {
         <button className="icon-button mobile-only" type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation">
           <Menu size={19} />
         </button>
-        <a className="brand" href="#/start/overview" aria-label="Gefahr documentation home">
+        <a className="brand" href={`#/${defaultRoute}`} aria-label="Gefahr documentation home">
           <span className="brand-mark" aria-hidden="true">
             G
           </span>
@@ -173,7 +173,7 @@ function DocView({ doc }: { doc: DocPage }) {
           <h1>{doc.title}</h1>
           <p>{doc.summary}</p>
           <a className="source-link" href={`https://github.com/AnouarMohamed/Gefahr/blob/main/${doc.sourcePath}`}>
-            View source: {doc.sourcePath}
+            Edit this page: {doc.sourcePath}
           </a>
         </header>
         <div ref={articleRef} className="article-body" onClick={onArticleClick} dangerouslySetInnerHTML={{ __html: doc.html }} />
@@ -203,7 +203,7 @@ function SearchResults({ query, results }: { query: string; results: DocPage[] }
           Search
         </div>
         <h1>{results.length} results for "{query}"</h1>
-        <p>Results include source docs, runbooks, release guidance, and the legacy learning guide.</p>
+        <p>Results include guides, concepts, tasks, operations pages, and reference material.</p>
       </header>
       <div className="result-list">
         {results.map((doc) => (

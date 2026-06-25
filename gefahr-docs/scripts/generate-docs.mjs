@@ -4,29 +4,11 @@ import path from "node:path";
 
 const siteRoot = process.cwd();
 const repoRoot = path.resolve(siteRoot, "..");
+const contentRoot = path.join(siteRoot, "content");
 const outputPath = path.join(siteRoot, "src", "generated", "docs.ts");
 
-const sourceFiles = ["README.md", "CHANGELOG.md", ...(await markdownFiles(path.join(repoRoot, "docs")))];
+const sourceFiles = await markdownFiles(contentRoot);
 const routeByFile = new Map(sourceFiles.map((file) => [normalizeDocPath(file), routeFromPath(file)]));
-
-const sectionMap = [
-  { test: /^README\.md$/, section: "Start", order: 10, summary: "Install, run, configure, and understand the project at a glance." },
-  { test: /^docs\/completion\.md$/, section: "Start", order: 20, summary: "Current product-readiness state and known gaps." },
-  { test: /^docs\/architecture\.md$/, section: "Concepts", order: 30, summary: "How requests move through listeners, policies, caches, balancers, and upstreams." },
-  { test: /^docs\/adr\//, section: "Concepts", order: 40, summary: "Accepted architectural decisions and their consequences." },
-  { test: /^docs\/configuration\.md$/, section: "Reference", order: 50, summary: "Strict YAML configuration fields, defaults, and validation behavior." },
-  { test: /^docs\/compatibility\.md$/, section: "Reference", order: 60, summary: "Supported protocol paths, load balancer expectations, and explicit non-goals." },
-  { test: /^docs\/deployment-/, section: "Deploy", order: 70, summary: "Production deployment baselines for Kubernetes, VMs, and bare metal." },
-  { test: /^docs\/cloud-load-balancers\.md$/, section: "Deploy", order: 80, summary: "AWS, Google Cloud, and Azure load balancer operating notes." },
-  { test: /^docs\/operations\.md$/, section: "Operate", order: 90, summary: "Daily operations, probes, reloads, shutdown, and diagnosis." },
-  { test: /^docs\/runbooks\.md$/, section: "Operate", order: 100, summary: "Incident and upgrade procedures for real production events." },
-  { test: /^docs\/production-transition\.md$/, section: "Operate", order: 110, summary: "Cutover evidence checklist before production traffic moves through Gefahr." },
-  { test: /^docs\/disaster-recovery\.md$/, section: "Operate", order: 120, summary: "Recovery drills, evidence templates, RTO and RPO framing." },
-  { test: /^docs\/security\.md$/, section: "Secure", order: 130, summary: "Security model, controls, and known limitations." },
-  { test: /^docs\/release-acceptance\.md$/, section: "Release", order: 140, summary: "Release artifact, attestation, and acceptance requirements." },
-  { test: /^CHANGELOG\.md$/, section: "Release", order: 150, summary: "Notable project changes by release." },
-  { test: /^docs\/legacy-guide\//, section: "Learn", order: 200, summary: "Historical learning guide and implementation background." },
-];
 
 marked.use({
   gfm: true,
@@ -37,21 +19,21 @@ marked.use({
 
 const docs = [];
 for (const file of sourceFiles) {
-  const absolute = path.join(repoRoot, file);
-  const markdown = await readFile(absolute, "utf8");
-  const title = firstHeading(markdown) ?? titleFromPath(file);
+  const absolute = path.join(siteRoot, file);
+  const raw = await readFile(absolute, "utf8");
+  const { frontmatter, markdown } = parseFrontmatter(raw);
+  const title = frontmatter.title ?? firstHeading(markdown) ?? titleFromPath(file);
   const headings = collectHeadings(markdown);
   const route = routeFromPath(file);
-  const classification = classify(file);
   const html = await marked.parse(markdown, { renderer: rendererFor(file, route) });
   const plainText = toPlainText(markdown);
   docs.push({
     route,
     title,
-    sourcePath: file,
-    section: classification.section,
-    sectionOrder: classification.order,
-    summary: classification.summary ?? firstParagraph(markdown) ?? "",
+    sourcePath: path.posix.join("gefahr-docs", normalizeDocPath(file)),
+    section: frontmatter.section ?? "Reference",
+    sectionOrder: Number(frontmatter.order ?? 500),
+    summary: frontmatter.summary ?? firstParagraph(markdown) ?? "",
     headings,
     readingMinutes: Math.max(1, Math.round(plainText.split(/\s+/).filter(Boolean).length / 220)),
     html,
@@ -85,14 +67,10 @@ async function markdownFiles(directory) {
     if (entry.isDirectory()) {
       files.push(...(await markdownFiles(absolute)));
     } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      files.push(path.relative(repoRoot, absolute));
+      files.push(normalizeDocPath(path.relative(siteRoot, absolute)));
     }
   }
   return files.sort();
-}
-
-function classify(file) {
-  return sectionMap.find((entry) => entry.test.test(file)) ?? { section: "Reference", order: 500, summary: undefined };
 }
 
 function firstHeading(markdown) {
@@ -119,18 +97,31 @@ function titleFromPath(file) {
 }
 
 function routeFromPath(file) {
-  if (file === "README.md") {
-    return "start/overview";
-  }
-  if (file === "CHANGELOG.md") {
-    return "release/changelog";
-  }
   return file
-    .replace(/^docs\//, "")
+    .replace(/^content\//, "")
     .replace(/\.md$/, "")
     .toLowerCase()
     .replace(/[^a-z0-9/]+/g, "-")
     .replace(/\/index$/, "");
+}
+
+function parseFrontmatter(raw) {
+  if (!raw.startsWith("---\n")) {
+    return { frontmatter: {}, markdown: raw };
+  }
+  const end = raw.indexOf("\n---\n", 4);
+  if (end === -1) {
+    return { frontmatter: {}, markdown: raw };
+  }
+  const frontmatter = {};
+  for (const line of raw.slice(4, end).split("\n")) {
+    const separator = line.indexOf(":");
+    if (separator === -1) continue;
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    frontmatter[key] = value.replace(/^["']|["']$/g, "");
+  }
+  return { frontmatter, markdown: raw.slice(end + 5).trimStart() };
 }
 
 function rendererFor(sourceFile, sourceRoute) {
@@ -147,6 +138,9 @@ function rendererFor(sourceFile, sourceRoute) {
 
 function rewriteLink(sourceFile, sourceRoute, href) {
   if (!href || /^(https?:|mailto:|tel:)/i.test(href)) {
+    return { href };
+  }
+  if (href.startsWith("#/")) {
     return { href };
   }
   if (href.startsWith("#")) {
