@@ -1,5 +1,5 @@
 # Gefahr
-[![CodeQL](https://github.com/AnouarMohamed/Gefahr/actions/workflows/codeql.yml/badge.svg)](https://github.com/AnouarMohamed/Gefahr/actions/workflows/codeql.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/AnouarMohamed/Gefahr/codeql.yml?label=CodeQL&style=flat-square)](https://github.com/AnouarMohamed/Gefahr/actions/workflows/codeql.yml)
 [![CI](https://img.shields.io/github/actions/workflow/status/AnouarMohamed/Gefahr/ci.yml?branch=main&style=flat-square)](https://github.com/AnouarMohamed/Gefahr/actions/workflows/ci.yml) [![Go Version](https://img.shields.io/github/go-mod/go-version/AnouarMohamed/Gefahr?style=flat-square)](go.mod) [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE) [![Go Report Card](https://goreportcard.com/badge/github.com/AnouarMohamed/Gefahr?style=flat-square)](https://goreportcard.com/report/github.com/AnouarMohamed/Gefahr) [![codecov](https://img.shields.io/codecov/c/github/AnouarMohamed/Gefahr?style=flat-square)](https://codecov.io/gh/AnouarMohamed/Gefahr)
 
 Gefahr is a configurable Go reverse proxy with host/path routing, round-robin
