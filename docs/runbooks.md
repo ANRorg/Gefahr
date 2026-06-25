@@ -1,0 +1,65 @@
+# Operations runbooks
+
+These runbooks assume the admin listener is private and authenticated with
+`admin.auth_token_env`.
+
+## Upgrade
+
+1. Verify the release artifacts and attestations from
+   [`docs/release-acceptance.md`](release-acceptance.md).
+2. Stage the new binary, image tag, or ConfigMap without deleting the previous
+   known-good version.
+3. Apply to one instance or one rollout batch.
+4. Watch `/readyz`, `goproxy_requests_total`, 5xx rate,
+   `goproxy_retries_total`, backend health gauges, and
+   `goproxy_rate_limit_decisions_total{decision="limited"}`.
+5. Continue only after readiness is stable and error/retry rates match the
+   previous baseline.
+
+## Rollback
+
+For Kubernetes, pin the previous image tag and wait for rollout status as
+documented in [`docs/deployment-kubernetes.md`](deployment-kubernetes.md).
+
+For systemd, restore the previous binary or config from the same host and run:
+
+```sh
+sudo systemctl reload goproxy   # config-only rollback
+sudo systemctl restart goproxy  # binary or restart-only config rollback
+```
+
+After rollback, confirm `/readyz` returns `200`, request errors have returned to
+baseline, and no old instance is still serving traffic unexpectedly.
+
+## Elevated 5xx
+
+1. Split proxy errors by JSON `code`: `no_healthy_upstream`,
+   `proxy_overloaded`, `bad_gateway`, and `upstream_timeout` have different
+   owners.
+2. Check backend health gauges and active-request gauges for the affected pool.
+3. Inspect `goproxy_retries_total`; a rising retry rate usually means transport
+   failures before full outage.
+4. Compare upstream latency and response-header timeout with the configured
+   `timeouts.response_header`.
+5. Roll back the last route, pool, TLS, timeout, or backend deployment change if
+   the error started immediately after a release.
+
+## Unexpected 429
+
+1. Check `goproxy_rate_limit_decisions_total{decision="limited"}` by route.
+2. Confirm `client_ip.trusted_proxies` contains only the real ingress or load
+   balancer CIDRs.
+3. Verify the ingress sanitizes `X-Forwarded-For` and `X-Real-IP`; otherwise a
+   spoofed chain can collapse many users into the wrong identity.
+4. Increase the route budget only after confirming the limit is too low, not
+   masking abusive traffic.
+
+## Admin Access Anomaly
+
+1. Search JSON logs for `msg="admin request completed"` and
+   `auth="unauthorized"`.
+2. Confirm the source belongs to an expected monitoring, orchestration, or
+   operator network.
+3. Rotate `GOPROXY_ADMIN_TOKEN` if the source is unexpected or repeated.
+4. Tighten NetworkPolicy, host firewall rules, or security groups before
+   restoring broad access.

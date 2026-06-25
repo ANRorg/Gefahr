@@ -85,7 +85,7 @@ func run(args []string) error {
 	defer cancel()
 	var live atomic.Bool
 	live.Store(true)
-	adminHandler := admin.NewHandler(live.Load, runtime.Ready, metricSet.Handler(), adminToken)
+	adminHandler := admin.NewHandler(live.Load, runtime.Ready, metricSet.Handler(), adminToken, admin.WithAuditLogger(logger))
 
 	managed := make([]server.Managed, 0, len(cfg.Listeners)+1)
 	for i, listener := range cfg.Listeners {

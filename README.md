@@ -66,7 +66,9 @@ backend URLs, then pass it with `-config`.
 
 See the [configuration reference](docs/configuration.md) and
 [operations runbook](docs/operations.md). Kubernetes deployment guidance is in
-[the hardened baseline](docs/deployment-kubernetes.md).
+[the hardened baseline](docs/deployment-kubernetes.md); VM/bare-metal guidance
+is in [the systemd baseline](docs/deployment-systemd.md). Incident and upgrade
+procedures are in [runbooks](docs/runbooks.md).
 
 ## Development
 

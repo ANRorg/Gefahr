@@ -11,6 +11,7 @@ Semantic Versioning.
   GHCR images for tagged releases.
 - Add optional bearer-token authentication for admin endpoints through
   `admin.auth_token_env`.
+- Add structured admin audit logs for operational endpoint access.
 - Add per-route, per-client fixed-window rate limiting.
 - Add bounded Prometheus metrics for per-route rate-limit admission decisions.
 - Add trusted-proxy-aware client identity extraction for rate limiting and
@@ -18,6 +19,7 @@ Semantic Versioning.
 - Add upstream HTTPS trust controls, SNI override, and client certificates for
   backend mTLS.
 - Add a hardened Kubernetes deployment baseline.
+- Add a hardened systemd deployment baseline and production runbooks.
 
 ## [1.0.1] - 2026-06-22
 

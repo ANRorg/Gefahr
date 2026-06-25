@@ -17,19 +17,20 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 | TLS | Shipped | Public listeners can terminate static PEM certificates with TLS 1.2 minimum; HTTPS upstreams support custom CA files, SNI override, and client certificates for mTLS. |
 | Limits and timeouts | Shipped | Public servers enforce header, body, concurrency, connection, idle, read, write, upstream dial, upstream response, trusted-client route rate-limit, and shutdown bounds. |
 | Reload | Shipped | `SIGHUP` validates and stages a complete replacement snapshot before atomic publication; rejected reloads retain the previous snapshot. |
-| Observability | Shipped | JSON request logs, `/livez`, `/readyz`, `/metrics`, request metrics, cache metrics, rate-limit decision metrics, retry metrics, and backend health/active gauges are implemented. |
+| Observability | Shipped | JSON request logs, admin audit logs, `/livez`, `/readyz`, `/metrics`, request metrics, cache metrics, rate-limit decision metrics, retry metrics, and backend health/active gauges are implemented. |
 | Admin auth | Shipped | Admin endpoints can require a bearer token loaded from an environment variable via `admin.auth_token_env`. |
 | Kubernetes baseline | Shipped | A hardened manifest includes secret-backed admin auth, exec probes, read-only non-root pods, restricted admin networking, services, and a PodDisruptionBudget. |
+| systemd baseline | Shipped | A hardened service unit and environment-file template cover VM and bare-metal deployments with non-root execution and host-level sandboxing. |
 | Release integrity | Shipped | Release workflow publishes archives/images and generates GitHub provenance and SBOM attestations. |
-| Operations | Partial | Docker Compose, Kubernetes baseline, distroless runtime image, executable health check mode, release acceptance, and load-check instructions exist. Upgrade and incident runbooks are still thin. |
+| Operations | Partial | Docker Compose, Kubernetes and systemd baselines, distroless runtime image, executable health check mode, release acceptance, load-check instructions, and first-pass upgrade/incident runbooks exist. Disaster recovery drills and cloud-specific load-balancer examples are still thin. |
 
 ## Product gaps
 
 | Gap | Why it matters |
 |---|---|
-| Deployment hardening guide | Kubernetes is covered; systemd/VM deployment, cloud load balancer examples, and disaster recovery runbooks still need detail. |
+| Deployment hardening guide | Kubernetes and systemd/VM deployment are covered; cloud load balancer examples and disaster recovery drills still need detail. |
 | Traffic protection | Per-route rate limiting exists, but there is no WAF, bot classification, or adaptive abuse-control policy. |
-| Access-control model | Admin auth is bearer-token only; there is no role model, audit log for admin access, or integration with external identity providers. |
+| Access-control model | Admin auth is bearer-token only and audited; there is no role model or integration with external identity providers. |
 | Release packaging | Tagged archives, images, SBOMs, and attestations exist; package-manager manifests and cosign signatures are not included. |
 | Compatibility matrix | HTTP/1.1 and HTTP/2 behavior rely on Go's stack, but there is no documented compatibility test matrix across common clients, proxies, and cloud load balancers. |
 

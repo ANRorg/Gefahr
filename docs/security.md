@@ -16,7 +16,9 @@ and bounded graceful shutdown.
 
 Admin endpoints can require bearer-token authentication with
 `admin.auth_token_env`, but they are still designed for private management
-networks rather than direct internet exposure.
+networks rather than direct internet exposure. Admin requests are audited with
+path, status, auth result, remote address, and duration, without logging bearer
+tokens.
 
 TLS listeners require a certificate/key pair and TLS 1.2 or newer. Private keys
 must be mounted read-only with least-privilege filesystem permissions. HTTPS

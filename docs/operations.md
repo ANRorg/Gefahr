@@ -15,7 +15,9 @@ Bind the admin listener to loopback or a private management network. Set
 `admin.auth_token_env` in production so `/livez`, `/readyz`, and `/metrics`
 require `Authorization: Bearer <token>`. If the token is stored in
 `GOPROXY_ADMIN_TOKEN`, the built-in `goproxy -healthcheck` command and
-`make load-check` metrics scrape send it automatically.
+`make load-check` metrics scrape send it automatically. Every admin request is
+logged as `admin request completed` with method, path, status, auth result,
+remote address, and duration; authorization headers are never logged.
 
 ## Reload
 
@@ -44,5 +46,6 @@ Monitor backend health, retry rate, 5xx rate, cache outcomes, request latency,
 goroutine count. Repeated backend flapping usually means probe thresholds are
 too aggressive or the health endpoint is not representative.
 
-See [Kubernetes deployment](deployment-kubernetes.md) for the hardened baseline
-manifest and rollout guidance.
+See [Kubernetes deployment](deployment-kubernetes.md),
+[systemd deployment](deployment-systemd.md), and
+[operations runbooks](runbooks.md) for production rollout and incident guidance.

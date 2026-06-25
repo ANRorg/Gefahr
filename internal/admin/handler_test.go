@@ -1,8 +1,11 @@
 package admin
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +36,40 @@ func TestBearerTokenProtectsOperationalEndpoints(t *testing.T) {
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("authenticated status = %d; want %d", recorder.Code, http.StatusOK)
+	}
+}
+
+func TestAuditLoggerRecordsAdminAccessWithoutToken(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	handler := NewHandler(func() bool { return true }, func() bool { return true }, nil, "secret", WithAuditLogger(logger))
+
+	unauthorized := httptest.NewRecorder()
+	unauthorizedRequest := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	unauthorizedRequest.RemoteAddr = "192.0.2.10:1234"
+	unauthorizedRequest.Header.Set("Authorization", "Bearer wrong-secret")
+	handler.ServeHTTP(unauthorized, unauthorizedRequest)
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d", unauthorized.Code)
+	}
+
+	authorized := httptest.NewRecorder()
+	authorizedRequest := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	authorizedRequest.RemoteAddr = "192.0.2.10:1234"
+	authorizedRequest.Header.Set("Authorization", "Bearer secret")
+	handler.ServeHTTP(authorized, authorizedRequest)
+	if authorized.Code != http.StatusOK {
+		t.Fatalf("authorized status = %d", authorized.Code)
+	}
+
+	logs := output.String()
+	for _, expected := range []string{`"msg":"admin request completed"`, `"path":"/readyz"`, `"remote_addr":"192.0.2.10"`, `"status":401`, `"auth":"unauthorized"`, `"status":200`, `"auth":"authorized"`} {
+		if !strings.Contains(logs, expected) {
+			t.Fatalf("audit logs missing %s: %s", expected, logs)
+		}
+	}
+	if strings.Contains(logs, "wrong-secret") || strings.Contains(logs, "Bearer") {
+		t.Fatalf("audit logs leaked authorization material: %s", logs)
 	}
 }
 
