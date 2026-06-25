@@ -1,62 +1,118 @@
-# This workflow will build a docker container, publish and deploy it to Tencent Kubernetes Engine (TKE) when there is a push to the "main" branch.
+# This workflow builds a Docker image, publishes it, and deploys it to
+# Tencent Kubernetes Engine (TKE) when it is manually dispatched.
 #
 # To configure this workflow:
 #
-# 1. Ensure that your repository contains the necessary configuration for your Tencent Kubernetes Engine cluster,
-#    including deployment.yml, kustomization.yml, service.yml, etc.
-#
-# 2. Set up secrets in your workspace:
+# 1. Set up secrets in your repository or environment:
 #    - TENCENT_CLOUD_SECRET_ID with Tencent Cloud secret id
 #    - TENCENT_CLOUD_SECRET_KEY with Tencent Cloud secret key
 #    - TENCENT_CLOUD_ACCOUNT_ID with Tencent Cloud account id
 #    - TKE_REGISTRY_PASSWORD with TKE registry password
 #
-# 3. Change the values for the TKE_IMAGE_URL, TKE_REGION, TKE_CLUSTER_ID and DEPLOYMENT_NAME environment variables (below).
+# 2. Run the workflow manually and provide the TKE image, cluster, and
+#    deployment values for the target environment.
 
 name: Tencent Kubernetes Engine
 
 on:
-  push:
-    branches: [ "main" ]
-
-# Environment variables available to all jobs and steps in this workflow
-env:
-  TKE_IMAGE_URL: ccr.ccs.tencentyun.com/demo/mywebapp
-  TKE_REGION: ap-guangzhou
-  TKE_CLUSTER_ID: cls-mywebapp
-  DEPLOYMENT_NAME: tke-test
+  workflow_dispatch:
+    inputs:
+      image_url:
+        description: TKE image repository, for example ccr.ccs.tencentyun.com/namespace/goproxy
+        required: true
+      region:
+        description: Tencent Cloud region
+        required: true
+        default: ap-guangzhou
+      cluster_id:
+        description: TKE cluster id
+        required: true
+      namespace:
+        description: Kubernetes namespace
+        required: true
+        default: goproxy
+      deployment_name:
+        description: Kubernetes deployment name
+        required: true
+        default: goproxy
+      container_name:
+        description: Container name in the deployment
+        required: true
+        default: goproxy
+      manifest_path:
+        description: Kubernetes manifest to apply
+        required: true
+        default: deploy/kubernetes/goproxy.yaml
 
 permissions:
   contents: read
+
+concurrency:
+  group: tke-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   setup-build-publish-deploy:
     name: Setup, Build, Publish, and Deploy
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 30
+    env:
+      TKE_IMAGE_URL: ${{ inputs.image_url }}
+      TKE_REGION: ${{ inputs.region }}
+      TKE_CLUSTER_ID: ${{ inputs.cluster_id }}
+      KUBE_NAMESPACE: ${{ inputs.namespace }}
+      DEPLOYMENT_NAME: ${{ inputs.deployment_name }}
+      CONTAINER_NAME: ${{ inputs.container_name }}
+      MANIFEST_PATH: ${{ inputs.manifest_path }}
     steps:
 
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Validate TKE configuration
+      env:
+        TENCENT_CLOUD_SECRET_ID: ${{ secrets.TENCENT_CLOUD_SECRET_ID }}
+        TENCENT_CLOUD_SECRET_KEY: ${{ secrets.TENCENT_CLOUD_SECRET_KEY }}
+        TENCENT_CLOUD_ACCOUNT_ID: ${{ secrets.TENCENT_CLOUD_ACCOUNT_ID }}
+        TKE_REGISTRY_PASSWORD: ${{ secrets.TKE_REGISTRY_PASSWORD }}
+      run: |
+        set -euo pipefail
+
+        missing=()
+        for name in TKE_IMAGE_URL TKE_REGION TKE_CLUSTER_ID KUBE_NAMESPACE DEPLOYMENT_NAME CONTAINER_NAME MANIFEST_PATH TENCENT_CLOUD_SECRET_ID TENCENT_CLOUD_SECRET_KEY TENCENT_CLOUD_ACCOUNT_ID TKE_REGISTRY_PASSWORD; do
+          if [ -z "${!name}" ]; then
+            missing+=("$name")
+          fi
+        done
+
+        if [ "${#missing[@]}" -gt 0 ]; then
+          printf 'Missing required TKE configuration: %s\n' "${missing[*]}"
+          exit 1
+        fi
+
+        if [ ! -f "$MANIFEST_PATH" ]; then
+          printf 'Kubernetes manifest not found: %s\n' "$MANIFEST_PATH"
+          exit 1
+        fi
+
     # Build
     - name: Build Docker image
       run: |
-        docker build -t ${TKE_IMAGE_URL}:${GITHUB_SHA} .
+        docker build --target runtime -t "${TKE_IMAGE_URL}:${GITHUB_SHA}" .
 
     - name: Login TKE Registry
+      env:
+        TENCENT_CLOUD_ACCOUNT_ID: ${{ secrets.TENCENT_CLOUD_ACCOUNT_ID }}
+        TKE_REGISTRY_PASSWORD: ${{ secrets.TKE_REGISTRY_PASSWORD }}
       run: |
-        docker login -u ${{ secrets.TENCENT_CLOUD_ACCOUNT_ID }} -p '${{ secrets.TKE_REGISTRY_PASSWORD }}' ${TKE_IMAGE_URL}
+        registry="${TKE_IMAGE_URL%%/*}"
+        printf '%s' "$TKE_REGISTRY_PASSWORD" | docker login "$registry" --username "$TENCENT_CLOUD_ACCOUNT_ID" --password-stdin
 
     # Push the Docker image to TKE Registry
     - name: Publish
       run: |
-        docker push ${TKE_IMAGE_URL}:${GITHUB_SHA}
-
-    - name: Set up Kustomize
-      run: |
-        curl -o kustomize --location https://github.com/kubernetes-sigs/kustomize/releases/download/v3.1.0/kustomize_3.1.0_linux_amd64
-        chmod u+x ./kustomize
+        docker push "${TKE_IMAGE_URL}:${GITHUB_SHA}"
 
     - name: Set up ~/.kube/config for connecting TKE cluster
       uses: TencentCloud/tke-cluster-credential-action@v1
@@ -68,12 +124,12 @@ jobs:
 
     - name: Switch to TKE context
       run: |
-        kubectl config use-context ${TKE_CLUSTER_ID}-context-default
+        kubectl config use-context "${TKE_CLUSTER_ID}-context-default"
 
     # Deploy the Docker image to the TKE cluster
     - name: Deploy
       run: |
-        ./kustomize edit set image ${TKE_IMAGE_URL}:${GITHUB_SHA}
-        ./kustomize build . | kubectl apply -f -
-        kubectl rollout status deployment/${DEPLOYMENT_NAME}
-        kubectl get services -o wide
+        kubectl apply -f "$MANIFEST_PATH"
+        kubectl set image "deployment/${DEPLOYMENT_NAME}" "${CONTAINER_NAME}=${TKE_IMAGE_URL}:${GITHUB_SHA}" --namespace "$KUBE_NAMESPACE"
+        kubectl rollout status "deployment/${DEPLOYMENT_NAME}" --namespace "$KUBE_NAMESPACE"
+        kubectl get services --namespace "$KUBE_NAMESPACE" -o wide
