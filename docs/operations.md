@@ -16,9 +16,12 @@ Bind the admin listener to loopback or a private management network. Set
 `admin.auth_token_env` in production so `/livez`, `/readyz`, and `/metrics`
 require `Authorization: Bearer <token>`. If the token is stored in
 `GOPROXY_ADMIN_TOKEN`, the built-in `goproxy -healthcheck` command and
-`make load-check` metrics scrape send it automatically. Every admin request is
-logged as `admin request completed` with method, path, status, auth result,
-remote address, and duration; authorization headers are never logged.
+`make load-check` metrics scrape send it automatically. Use `admin.tokens[]`
+for lower-privilege monitoring credentials; `read` grants health and metrics,
+while `health` or `metrics` grants only that endpoint class. Every admin
+request is logged as `admin request completed` with method, path, status, auth
+result, principal, remote address, and duration; authorization headers are
+never logged.
 
 ## Reload
 

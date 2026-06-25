@@ -39,6 +39,25 @@ func TestBearerTokenProtectsOperationalEndpoints(t *testing.T) {
 	}
 }
 
+func TestScopedCredentialsAuthorizeAdminEndpoints(t *testing.T) {
+	handler := NewHandler(func() bool { return true }, func() bool { return true }, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), "", WithCredentials([]Credential{
+		{Name: "health", Token: "health-secret", Scopes: []string{"health"}},
+		{Name: "metrics", Token: "metrics-secret", Scopes: []string{"metrics"}},
+		{Name: "reader", Token: "read-secret", Scopes: []string{"read"}},
+		{Name: "operator", Token: "admin-secret", Scopes: []string{"admin"}},
+	}))
+
+	assertBearerStatus(t, handler, "/readyz", "health-secret", http.StatusOK)
+	assertBearerStatus(t, handler, "/metrics", "health-secret", http.StatusForbidden)
+	assertBearerStatus(t, handler, "/metrics", "metrics-secret", http.StatusNoContent)
+	assertBearerStatus(t, handler, "/readyz", "read-secret", http.StatusOK)
+	assertBearerStatus(t, handler, "/metrics", "read-secret", http.StatusNoContent)
+	assertBearerStatus(t, handler, "/missing", "read-secret", http.StatusForbidden)
+	assertBearerStatus(t, handler, "/missing", "admin-secret", http.StatusNotFound)
+}
+
 func TestAuditLoggerRecordsAdminAccessWithoutToken(t *testing.T) {
 	var output bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&output, nil))
@@ -73,11 +92,42 @@ func TestAuditLoggerRecordsAdminAccessWithoutToken(t *testing.T) {
 	}
 }
 
+func TestAuditLoggerRecordsScopedPrincipalAndForbidden(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	handler := NewHandler(func() bool { return true }, func() bool { return true }, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), "", WithCredentials([]Credential{{Name: "health", Token: "health-secret", Scopes: []string{"health"}}}), WithAuditLogger(logger))
+
+	assertBearerStatus(t, handler, "/metrics", "health-secret", http.StatusForbidden)
+
+	logs := output.String()
+	for _, expected := range []string{`"status":403`, `"auth":"forbidden"`, `"principal":"health"`} {
+		if !strings.Contains(logs, expected) {
+			t.Fatalf("audit logs missing %s: %s", expected, logs)
+		}
+	}
+	if strings.Contains(logs, "health-secret") || strings.Contains(logs, "Bearer") {
+		t.Fatalf("audit logs leaked authorization material: %s", logs)
+	}
+}
+
 func assertStatus(t *testing.T, handler http.Handler, path string, want int) {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
 	if recorder.Code != want {
 		t.Fatalf("%s status = %d; want %d", path, recorder.Code, want)
+	}
+}
+
+func assertBearerStatus(t *testing.T, handler http.Handler, path, token string, want int) {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != want {
+		t.Fatalf("%s with token %q status = %d; want %d", path, token, recorder.Code, want)
 	}
 }

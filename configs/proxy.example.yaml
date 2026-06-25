@@ -6,6 +6,13 @@ admin:
   # Set this in production and export the named variable with a bearer token.
   # The built-in healthcheck reads GOPROXY_ADMIN_TOKEN automatically.
   # auth_token_env: GOPROXY_ADMIN_TOKEN
+  # Additional scoped tokens let monitoring read health/metrics without using
+  # the full operator token.
+  # tokens:
+  #   - name: monitor
+  #     env: GOPROXY_MONITOR_TOKEN
+  #     scopes:
+  #       - read
 
 routes:
   - name: api

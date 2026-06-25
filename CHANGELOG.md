@@ -11,6 +11,7 @@ Semantic Versioning.
   GHCR images for tagged releases.
 - Add optional bearer-token authentication for admin endpoints through
   `admin.auth_token_env`.
+- Add named scoped admin tokens for health, metrics, read, and admin access.
 - Add structured admin audit logs for operational endpoint access.
 - Add per-route request policy guardrails for allowed methods, denied path
   prefixes, required/denied headers, and query-string size.

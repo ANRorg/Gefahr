@@ -116,10 +116,11 @@ func TestImmutableCompatibleRejectsServerLevelBounds(t *testing.T) {
 	current := config.Default()
 	next := current
 	next.Admin.AuthTokenEnv = "GOPROXY_ADMIN_TOKEN"
+	next.Admin.Tokens = []config.AdminToken{{Name: "monitor", Env: "GOPROXY_MONITOR_TOKEN", Scopes: []string{"read"}}}
 	next.Timeouts.Write++
 	next.Limits.MaxHeaderBytes++
 	err := immutableCompatible(current, next)
-	if err == nil || !strings.Contains(err.Error(), "admin.auth_token_env") || !strings.Contains(err.Error(), "timeouts.write") || !strings.Contains(err.Error(), "limits.max_header_bytes") {
+	if err == nil || !strings.Contains(err.Error(), "admin.auth_token_env") || !strings.Contains(err.Error(), "admin.tokens") || !strings.Contains(err.Error(), "timeouts.write") || !strings.Contains(err.Error(), "limits.max_header_bytes") {
 		t.Fatalf("error = %v", err)
 	}
 }

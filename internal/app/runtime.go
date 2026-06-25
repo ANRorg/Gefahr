@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -136,6 +137,9 @@ func immutableCompatible(current, next config.Config) error {
 	}
 	if current.Admin.AuthTokenEnv != next.Admin.AuthTokenEnv {
 		errs = append(errs, errors.New("admin.auth_token_env requires restart"))
+	}
+	if !reflect.DeepEqual(current.Admin.Tokens, next.Admin.Tokens) {
+		errs = append(errs, errors.New("admin.tokens requires restart"))
 	}
 	if len(current.Listeners) != len(next.Listeners) {
 		errs = append(errs, errors.New("listener count requires restart"))

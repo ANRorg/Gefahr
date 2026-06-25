@@ -49,6 +49,41 @@ func TestValidateRejectsInvalidAdminTokenEnvironment(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsInvalidAdminScopedTokens(t *testing.T) {
+	tests := []func(*Config){
+		func(cfg *Config) {
+			cfg.Admin.Tokens = []AdminToken{{Name: "bad name", Env: "GOPROXY_TOKEN", Scopes: []string{"read"}}}
+		},
+		func(cfg *Config) {
+			cfg.Admin.Tokens = []AdminToken{{Name: "monitor", Env: "bad-env", Scopes: []string{"read"}}}
+		},
+		func(cfg *Config) { cfg.Admin.Tokens = []AdminToken{{Name: "monitor", Env: "GOPROXY_TOKEN"}} },
+		func(cfg *Config) {
+			cfg.Admin.Tokens = []AdminToken{{Name: "monitor", Env: "GOPROXY_TOKEN", Scopes: []string{"write"}}}
+		},
+		func(cfg *Config) {
+			cfg.Admin.Tokens = []AdminToken{{Name: "monitor", Env: "GOPROXY_TOKEN", Scopes: []string{"read", "read"}}}
+		},
+		func(cfg *Config) {
+			cfg.Admin.Tokens = []AdminToken{
+				{Name: "monitor", Env: "GOPROXY_ONE", Scopes: []string{"read"}},
+				{Name: "monitor", Env: "GOPROXY_TWO", Scopes: []string{"read"}},
+			}
+		},
+		func(cfg *Config) {
+			cfg.Admin.AuthTokenEnv = "GOPROXY_TOKEN"
+			cfg.Admin.Tokens = []AdminToken{{Name: "monitor", Env: "GOPROXY_TOKEN", Scopes: []string{"read"}}}
+		},
+	}
+	for i, mutate := range tests {
+		cfg := validConfig()
+		mutate(&cfg)
+		if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "admin") {
+			t.Fatalf("case %d error = %v", i, err)
+		}
+	}
+}
+
 func TestValidateRejectsInvalidRateLimit(t *testing.T) {
 	cfg := validConfig()
 	cfg.Routes[0].RateLimit = RateLimit{Enabled: true, Requests: 0, Window: Duration(time.Minute)}

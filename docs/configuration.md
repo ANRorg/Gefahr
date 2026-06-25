@@ -17,8 +17,10 @@ connection limit.
   `tls.key_file` enable TLS 1.2+ for that listener.
 - `admin.address`: private liveness, readiness, and metrics listener.
   `admin.auth_token_env` optionally names an environment variable containing a
-  bearer token required for all admin endpoints. Changing either admin field
-  requires a restart.
+  full-scope bearer token required for all admin endpoints.
+  `admin.tokens[]` can add named scoped bearer tokens loaded from environment
+  variables. Supported scopes are `health`, `metrics`, `read` (health and
+  metrics), and `admin`. Changing any admin field requires a restart.
 - `routes`: ordered route definitions with unique names.
 - `pools`: named backend groups referenced by routes.
 - `timeouts`: public read/write, upstream dial/response, idle, and shutdown
@@ -80,6 +82,7 @@ only be used for isolated diagnostics.
 
 Unknown fields, duplicate routes/listeners, nonexistent pool references,
 invalid URLs, incomplete upstream TLS pairs, invalid route policies, invalid
-trusted proxy CIDRs, non-positive limits, and invalid durations are rejected
-together with field-oriented errors. Route, pool, and backend identifiers use at
-most 128 ASCII letters, digits, dots, underscores, and hyphens.
+admin token scopes, invalid trusted proxy CIDRs, non-positive limits, and
+invalid durations are rejected together with field-oriented errors. Route, pool,
+backend, and admin token identifiers use at most 128 ASCII letters, digits,
+dots, underscores, and hyphens.

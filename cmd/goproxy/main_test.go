@@ -81,6 +81,35 @@ func TestAdminTokenRequiresConfiguredEnvironment(t *testing.T) {
 	}
 }
 
+func TestAdminCredentialsLoadLegacyAndScopedTokens(t *testing.T) {
+	t.Setenv("GOPROXY_ADMIN_TOKEN", "admin-secret")
+	t.Setenv("GOPROXY_MONITOR_TOKEN", "monitor-secret")
+	cfg := config.Default()
+	cfg.Admin.AuthTokenEnv = "GOPROXY_ADMIN_TOKEN"
+	cfg.Admin.Tokens = []config.AdminToken{{Name: "monitor", Env: "GOPROXY_MONITOR_TOKEN", Scopes: []string{"read"}}}
+	credentials, err := adminCredentials(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(credentials) != 2 {
+		t.Fatalf("credentials = %+v", credentials)
+	}
+	if credentials[0].Name != "legacy-admin" || credentials[0].Token != "admin-secret" || credentials[0].Scopes[0] != "admin" {
+		t.Fatalf("legacy credential = %+v", credentials[0])
+	}
+	if credentials[1].Name != "monitor" || credentials[1].Token != "monitor-secret" || credentials[1].Scopes[0] != "read" {
+		t.Fatalf("scoped credential = %+v", credentials[1])
+	}
+}
+
+func TestAdminCredentialsRequireScopedTokenEnvironment(t *testing.T) {
+	cfg := config.Default()
+	cfg.Admin.Tokens = []config.AdminToken{{Name: "monitor", Env: "GOPROXY_MONITOR_TOKEN", Scopes: []string{"read"}}}
+	if _, err := adminCredentials(cfg); err == nil || !strings.Contains(err.Error(), "GOPROXY_MONITOR_TOKEN") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestVersionStringIncludesBuildMetadata(t *testing.T) {
 	previousVersion, previousCommit := version, commit
 	t.Cleanup(func() { version, commit = previousVersion, previousCommit })

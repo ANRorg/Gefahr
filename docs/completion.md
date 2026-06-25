@@ -20,7 +20,7 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 | Reload | Shipped | `SIGHUP` validates and stages a complete replacement snapshot before atomic publication; rejected reloads retain the previous snapshot. |
 | Observability | Shipped | JSON request logs, admin audit logs, `/livez`, `/readyz`, `/metrics`, request metrics, cache metrics, policy-denial metrics, rate-limit decision metrics, retry metrics, and backend health/active gauges are implemented. |
 | Test coverage | Shipped | `make coverage` and CI enforce an 85% repository coverage floor; the current measured total is 88.1%. |
-| Admin auth | Shipped | Admin endpoints can require a bearer token loaded from an environment variable via `admin.auth_token_env`. |
+| Admin auth | Shipped | Admin endpoints can require a full-scope bearer token via `admin.auth_token_env` or named scoped tokens via `admin.tokens[]`; admin audit logs record auth result and principal without logging tokens. |
 | Compatibility | Shipped | The real-socket integration suite covers cleartext HTTP/1.1 clients, TLS HTTP/2 clients, cleartext HTTP/1.1 upstreams, and HTTPS HTTP/2 upstreams; the documented matrix records supported and unsupported paths. |
 | Kubernetes baseline | Shipped | A hardened manifest includes secret-backed admin auth, exec probes, read-only non-root pods, restricted admin networking, services, and a PodDisruptionBudget. |
 | systemd baseline | Shipped | A hardened service unit and environment-file template cover VM and bare-metal deployments with non-root execution and host-level sandboxing. |
@@ -32,7 +32,7 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 | Gap | Why it matters |
 |---|---|
 | Traffic protection | Static per-route request guardrails and rate limiting exist, but there is no full WAF rule engine, bot classification, or adaptive abuse-control policy. |
-| Access-control model | Admin auth is bearer-token only and audited; there is no role model or integration with external identity providers. |
+| Access-control model | Scoped admin bearer tokens exist for health, metrics, read, and admin access, but there is no external identity-provider integration. |
 | Release packaging | Tagged archives, images, SBOMs, and attestations exist; package-manager manifests and cosign signatures are not included. |
 
 ## Superseded legacy requirements

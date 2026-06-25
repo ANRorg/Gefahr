@@ -23,6 +23,34 @@ Gefahr config is strict YAML. Unknown fields fail validation.
 | `cache` | yes | Process-wide cache bounds |
 | `logging` | yes | Log level |
 
+## Admin
+
+```yaml
+admin:
+  address: "127.0.0.1:9090"
+  auth_token_env: GOPROXY_ADMIN_TOKEN
+  tokens:
+    - name: monitor
+      env: GOPROXY_MONITOR_TOKEN
+      scopes:
+        - read
+```
+
+`auth_token_env` is a backward-compatible full-scope admin token. Use
+`admin.tokens[]` for named scoped credentials.
+
+Supported scopes:
+
+| Scope | Grants |
+|---|---|
+| `health` | `GET /livez` and `GET /readyz` |
+| `metrics` | `GET /metrics` |
+| `read` | Health and metrics endpoints |
+| `admin` | All admin endpoints |
+
+Changing `admin.address`, `admin.auth_token_env`, or `admin.tokens[]` requires
+a restart.
+
 ## Route
 
 ```yaml

@@ -77,12 +77,15 @@ func TestLoadAppliesDefaultsAndDurations(t *testing.T) {
 }
 
 func TestLoadAcceptsAdminAuthTokenEnvironment(t *testing.T) {
-	cfg, err := Load(strings.NewReader("admin:\n  auth_token_env: GOPROXY_ADMIN_TOKEN\n" + validYAML))
+	cfg, err := Load(strings.NewReader("admin:\n  auth_token_env: GOPROXY_ADMIN_TOKEN\n  tokens:\n    - name: monitor\n      env: GOPROXY_MONITOR_TOKEN\n      scopes:\n        - read\n" + validYAML))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Admin.AuthTokenEnv != "GOPROXY_ADMIN_TOKEN" {
 		t.Fatalf("auth token env = %q", cfg.Admin.AuthTokenEnv)
+	}
+	if len(cfg.Admin.Tokens) != 1 || cfg.Admin.Tokens[0].Name != "monitor" || cfg.Admin.Tokens[0].Scopes[0] != "read" {
+		t.Fatalf("admin tokens = %+v", cfg.Admin.Tokens)
 	}
 }
 

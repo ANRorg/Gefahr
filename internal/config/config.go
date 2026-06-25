@@ -51,8 +51,16 @@ type TLSConfig struct {
 
 // Admin configures the private operational HTTP listener.
 type Admin struct {
-	Address      string `yaml:"address"`
-	AuthTokenEnv string `yaml:"auth_token_env"`
+	Address      string       `yaml:"address"`
+	AuthTokenEnv string       `yaml:"auth_token_env"`
+	Tokens       []AdminToken `yaml:"tokens"`
+}
+
+// AdminToken names one admin bearer-token source and the scopes it grants.
+type AdminToken struct {
+	Name   string   `yaml:"name"`
+	Env    string   `yaml:"env"`
+	Scopes []string `yaml:"scopes"`
 }
 
 // Route maps an incoming host and path prefix to a backend pool.

@@ -30,7 +30,8 @@ path, observability, and rollback process are ready together.
 ## Deployment
 
 - Kubernetes or systemd deployment path is selected and rehearsed.
-- Admin listener is private and protected with `admin.auth_token_env`.
+- Admin listener is private and protected with `admin.auth_token_env` or scoped
+  `admin.tokens[]`.
 - Public TLS and upstream TLS secrets are mounted read-only.
 - Health checks use either a public route with an upstream dependency or private
   `/readyz` with the admin bearer token.
@@ -42,7 +43,8 @@ path, observability, and rollback process are ready together.
 
 - Prometheus scrape path reaches `/metrics` through the private admin path.
 - Logs are collected and searchable by request ID.
-- Admin audit logs are searchable by `auth`, `path`, and `remote_addr`.
+- Admin audit logs are searchable by `auth`, `principal`, `path`, and
+  `remote_addr`.
 - Dashboards include request rate, status codes, latency, retries, backend
   health, active backend requests, cache outcomes, policy denials, rate-limit
   decisions, memory, and goroutines.

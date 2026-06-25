@@ -19,6 +19,8 @@ endpoints.
 | `/metrics` | Prometheus text metrics |
 
 Protect admin endpoints with `admin.auth_token_env` and private networking.
+Use a scoped `admin.tokens[]` credential with `read` or `metrics` for
+monitoring systems.
 
 ## Request logs
 
@@ -43,6 +45,7 @@ Admin requests are logged with:
 - Path.
 - Status.
 - Auth result.
+- Principal.
 - Remote address.
 - Duration.
 

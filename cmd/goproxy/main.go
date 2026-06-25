@@ -68,7 +68,7 @@ func runContext(parent context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	adminToken, err := adminToken(cfg)
+	adminCredentials, err := adminCredentials(cfg)
 	if err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func runContext(parent context.Context, args []string) error {
 	defer cancel()
 	var live atomic.Bool
 	live.Store(true)
-	adminHandler := admin.NewHandler(live.Load, runtime.Ready, metricSet.Handler(), adminToken, admin.WithAuditLogger(logger))
+	adminHandler := admin.NewHandler(live.Load, runtime.Ready, metricSet.Handler(), "", admin.WithCredentials(adminCredentials), admin.WithAuditLogger(logger))
 
 	managed := make([]server.Managed, 0, len(cfg.Listeners)+1)
 	for i, listener := range cfg.Listeners {
@@ -156,6 +156,25 @@ func adminToken(cfg config.Config) (string, error) {
 		return "", fmt.Errorf("admin auth token environment variable %s is empty or unset", cfg.Admin.AuthTokenEnv)
 	}
 	return token, nil
+}
+
+func adminCredentials(cfg config.Config) ([]admin.Credential, error) {
+	var credentials []admin.Credential
+	if cfg.Admin.AuthTokenEnv != "" {
+		token, err := adminToken(cfg)
+		if err != nil {
+			return nil, err
+		}
+		credentials = append(credentials, admin.Credential{Name: "legacy-admin", Token: token, Scopes: []string{"admin"}})
+	}
+	for _, configured := range cfg.Admin.Tokens {
+		token := os.Getenv(configured.Env)
+		if token == "" {
+			return nil, fmt.Errorf("admin token environment variable %s is empty or unset", configured.Env)
+		}
+		credentials = append(credentials, admin.Credential{Name: configured.Name, Token: token, Scopes: configured.Scopes})
+	}
+	return credentials, nil
 }
 
 func setLogLevel(level *slog.LevelVar, configured string) {

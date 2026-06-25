@@ -31,7 +31,9 @@ Use this checklist before routing production traffic through Gefahr.
 ## Deployment
 
 - Admin listener is private.
-- Admin auth is enabled with `admin.auth_token_env`.
+- Admin auth is enabled with `admin.auth_token_env` or scoped `admin.tokens[]`.
+- Monitoring uses a scoped read or metrics token instead of the full operator
+  token.
 - Public TLS and upstream TLS secrets are mounted read-only.
 - Probes use either a real public route or private `/readyz` with admin auth.
 - Graceful shutdown is shorter than orchestrator termination grace.
@@ -41,7 +43,7 @@ Use this checklist before routing production traffic through Gefahr.
 
 - Metrics are scraped from the private admin path.
 - Logs are searchable by request ID.
-- Admin audit logs are searchable by source and auth result.
+- Admin audit logs are searchable by source, principal, and auth result.
 - Dashboards include status, latency, retries, backend health, active backend
   requests, cache outcomes, policy denials, rate limits, memory, and goroutines.
 - Alerts exist for readiness failure, 5xx, retries, no healthy upstream,

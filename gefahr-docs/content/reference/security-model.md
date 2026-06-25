@@ -21,7 +21,7 @@ around that foundation.
 - Static per-route request policy.
 - Per-route rate limits with bounded client-identity state.
 - Bounded graceful shutdown.
-- Admin bearer token support.
+- Full-scope and scoped admin bearer token support.
 - Admin audit logs.
 - Upstream TLS CA, SNI, and mTLS support.
 
@@ -33,8 +33,11 @@ sanitizes and sets those headers.
 
 ## Admin boundary
 
-Admin endpoints are for private operations networks. Even with bearer auth,
-the admin listener should not be directly internet-facing.
+Admin endpoints are for private operations networks. `admin.auth_token_env`
+grants full admin access. `admin.tokens[]` can grant named `health`, `metrics`,
+`read`, or `admin` credentials so monitoring does not need the operator token.
+Even with bearer auth, the admin listener should not be directly
+internet-facing.
 
 ## Known limitations
 

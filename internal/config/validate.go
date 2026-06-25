@@ -50,6 +50,7 @@ func Validate(cfg Config) error {
 	if cfg.Admin.AuthTokenEnv != "" && !envNamePattern.MatchString(cfg.Admin.AuthTokenEnv) {
 		errs = append(errs, fmt.Errorf("admin.auth_token_env must match %s", envNamePattern))
 	}
+	errs = append(errs, validateAdminTokens(cfg.Admin.AuthTokenEnv, cfg.Admin.Tokens)...)
 	if seenListeners[cfg.Admin.Address] {
 		errs = append(errs, errors.New("admin address must differ from public listeners"))
 	}
@@ -196,6 +197,52 @@ func Validate(cfg Config) error {
 		errs = append(errs, errors.New("logging.level must be debug, info, warn, or error"))
 	}
 	return errors.Join(errs...)
+}
+
+func validateAdminTokens(legacyEnv string, tokens []AdminToken) []error {
+	var errs []error
+	const maxAdminTokens = 16
+	if len(tokens) > maxAdminTokens {
+		errs = append(errs, fmt.Errorf("admin.tokens must not exceed %d entries", maxAdminTokens))
+	}
+	seenNames, seenEnvs := map[string]bool{}, map[string]bool{}
+	if legacyEnv != "" {
+		seenEnvs[legacyEnv] = true
+	}
+	for i, token := range tokens {
+		field := fmt.Sprintf("admin.tokens[%d]", i)
+		if !identifierPattern.MatchString(token.Name) {
+			errs = append(errs, fmt.Errorf("%s.name must match %s", field, identifierPattern))
+		}
+		if seenNames[token.Name] {
+			errs = append(errs, fmt.Errorf("admin token name %q is duplicated", token.Name))
+		}
+		seenNames[token.Name] = true
+		if !envNamePattern.MatchString(token.Env) {
+			errs = append(errs, fmt.Errorf("%s.env must match %s", field, envNamePattern))
+		}
+		if seenEnvs[token.Env] {
+			errs = append(errs, fmt.Errorf("admin token env %q is duplicated", token.Env))
+		}
+		seenEnvs[token.Env] = true
+		if len(token.Scopes) == 0 {
+			errs = append(errs, fmt.Errorf("%s.scopes requires at least one scope", field))
+		}
+		seenScopes := map[string]bool{}
+		for j, scope := range token.Scopes {
+			if scope != strings.TrimSpace(scope) {
+				errs = append(errs, fmt.Errorf("%s.scopes[%d] must not contain surrounding whitespace", field, j))
+			}
+			if scope != "admin" && scope != "health" && scope != "metrics" && scope != "read" {
+				errs = append(errs, fmt.Errorf("%s.scopes[%d] must be admin, health, metrics, or read", field, j))
+			}
+			if seenScopes[scope] {
+				errs = append(errs, fmt.Errorf("%s.scopes contains duplicate scope %q", field, scope))
+			}
+			seenScopes[scope] = true
+		}
+	}
+	return errs
 }
 
 func validateRoutePolicy(field string, policy RoutePolicy) []error {

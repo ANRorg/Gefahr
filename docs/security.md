@@ -18,10 +18,11 @@ headers, and cap raw query-string bytes before traffic reaches rate limiting or
 an upstream.
 
 Admin endpoints can require bearer-token authentication with
-`admin.auth_token_env`, but they are still designed for private management
-networks rather than direct internet exposure. Admin requests are audited with
-path, status, auth result, remote address, and duration, without logging bearer
-tokens.
+`admin.auth_token_env` or named scoped tokens under `admin.tokens[]`. Scoped
+tokens can grant `health`, `metrics`, `read`, or `admin`. They are still
+designed for private management networks rather than direct internet exposure.
+Admin requests are audited with path, status, auth result, principal, remote
+address, and duration, without logging bearer tokens.
 
 TLS listeners require a certificate/key pair and TLS 1.2 or newer. Private keys
 must be mounted read-only with least-privilege filesystem permissions. HTTPS
@@ -34,7 +35,8 @@ variant keying is not implemented. It also lacks revalidation, stale serving,
 and distributed coherence. Cache contents are process-local and disappear on
 restart.
 
-Gefahr has no role-based authorization layer, adaptive bot classification,
-full WAF rule engine, HTTP/3, ACME client, dynamic service discovery, or
-configuration mutation API. Place the admin listener on a trusted network and
-add external controls where those capabilities are required.
+Gefahr has scoped admin bearer tokens, but no external identity provider
+integration, adaptive bot classification, full WAF rule engine, HTTP/3, ACME
+client, dynamic service discovery, or configuration mutation API. Place the
+admin listener on a trusted network and add external controls where those
+capabilities are required.

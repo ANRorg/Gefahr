@@ -79,9 +79,12 @@ used by production.
 ## Admin Access Anomaly
 
 1. Search JSON logs for `msg="admin request completed"` and
-   `auth="unauthorized"`.
+   `auth="unauthorized"` or `auth="forbidden"`.
 2. Confirm the source belongs to an expected monitoring, orchestration, or
    operator network.
-3. Rotate `GOPROXY_ADMIN_TOKEN` if the source is unexpected or repeated.
-4. Tighten NetworkPolicy, host firewall rules, or security groups before
+3. Use the `principal` field to identify which scoped credential was accepted
+   before a forbidden response.
+4. Rotate `GOPROXY_ADMIN_TOKEN` or the relevant scoped token if the source is
+   unexpected or repeated.
+5. Tighten NetworkPolicy, host firewall rules, or security groups before
    restoring broad access.
