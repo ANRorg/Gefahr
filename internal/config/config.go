@@ -32,6 +32,7 @@ type Config struct {
 	Pools     map[string]Pool `yaml:"pools"`
 	Timeouts  Timeouts        `yaml:"timeouts"`
 	Limits    Limits          `yaml:"limits"`
+	ClientIP  ClientIP        `yaml:"client_ip"`
 	Cache     Cache           `yaml:"cache"`
 	Logging   Logging         `yaml:"logging"`
 }
@@ -50,7 +51,8 @@ type TLSConfig struct {
 
 // Admin configures the private operational HTTP listener.
 type Admin struct {
-	Address string `yaml:"address"`
+	Address      string `yaml:"address"`
+	AuthTokenEnv string `yaml:"auth_token_env"`
 }
 
 // Route maps an incoming host and path prefix to a backend pool.
@@ -62,6 +64,7 @@ type Route struct {
 	Strategy    string     `yaml:"strategy"`
 	RewriteHost bool       `yaml:"rewrite_host"`
 	Cache       RouteCache `yaml:"cache"`
+	RateLimit   RateLimit  `yaml:"rate_limit"`
 }
 
 // RouteCache controls response caching for a route.
@@ -69,11 +72,29 @@ type RouteCache struct {
 	Enabled bool `yaml:"enabled"`
 }
 
+// RateLimit controls optional per-client request admission for a route.
+type RateLimit struct {
+	Enabled  bool     `yaml:"enabled"`
+	Requests int      `yaml:"requests"`
+	Window   Duration `yaml:"window"`
+	MaxKeys  int      `yaml:"max_keys"`
+}
+
 // Pool is a group of interchangeable upstream servers.
 type Pool struct {
 	Backends []Backend `yaml:"backends"`
 	Health   Health    `yaml:"health"`
 	Retry    Retry     `yaml:"retry"`
+	TLS      PoolTLS   `yaml:"tls"`
+}
+
+// PoolTLS controls verification and client identity for HTTPS upstreams.
+type PoolTLS struct {
+	CAFile             string `yaml:"ca_file"`
+	ServerName         string `yaml:"server_name"`
+	ClientCertFile     string `yaml:"client_cert_file"`
+	ClientKeyFile      string `yaml:"client_key_file"`
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
 }
 
 // Backend identifies one upstream server.
@@ -113,6 +134,12 @@ type Limits struct {
 	MaxBodyBytes          int64 `yaml:"max_body_bytes"`
 	MaxConcurrentRequests int   `yaml:"max_concurrent_requests"`
 	MaxConnections        int   `yaml:"max_connections"`
+}
+
+// ClientIP controls when forwarding headers may identify the original client.
+type ClientIP struct {
+	TrustedProxies []string `yaml:"trusted_proxies"`
+	Headers        []string `yaml:"headers"`
 }
 
 // Cache controls the process-wide bounded response cache.

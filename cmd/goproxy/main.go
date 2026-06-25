@@ -58,9 +58,13 @@ func run(args []string) error {
 			},
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		}
-		return runHealthcheck(client, *healthcheck)
+		return runHealthcheck(client, *healthcheck, os.Getenv("GOPROXY_ADMIN_TOKEN"))
 	}
 	cfg, err := config.LoadFile(*configPath)
+	if err != nil {
+		return err
+	}
+	adminToken, err := adminToken(cfg)
 	if err != nil {
 		return err
 	}
@@ -81,7 +85,7 @@ func run(args []string) error {
 	defer cancel()
 	var live atomic.Bool
 	live.Store(true)
-	adminHandler := admin.NewHandler(live.Load, runtime.Ready, metricSet.Handler())
+	adminHandler := admin.NewHandler(live.Load, runtime.Ready, metricSet.Handler(), adminToken)
 
 	managed := make([]server.Managed, 0, len(cfg.Listeners)+1)
 	for i, listener := range cfg.Listeners {
@@ -119,10 +123,13 @@ func versionString() string {
 	return fmt.Sprintf("goproxy version=%s commit=%s", version, commit)
 }
 
-func runHealthcheck(client *http.Client, target string) error {
+func runHealthcheck(client *http.Client, target, bearerToken string) error {
 	request, err := http.NewRequest(http.MethodGet, target, nil)
 	if err != nil {
 		return fmt.Errorf("healthcheck request: %w", err)
+	}
+	if bearerToken != "" {
+		request.Header.Set("Authorization", "Bearer "+bearerToken)
 	}
 	response, err := client.Do(request)
 	if err != nil {
@@ -134,6 +141,17 @@ func runHealthcheck(client *http.Client, target string) error {
 		return fmt.Errorf("healthcheck status %d", response.StatusCode)
 	}
 	return nil
+}
+
+func adminToken(cfg config.Config) (string, error) {
+	if cfg.Admin.AuthTokenEnv == "" {
+		return "", nil
+	}
+	token := os.Getenv(cfg.Admin.AuthTokenEnv)
+	if token == "" {
+		return "", fmt.Errorf("admin auth token environment variable %s is empty or unset", cfg.Admin.AuthTokenEnv)
+	}
+	return token, nil
 }
 
 func setLogLevel(level *slog.LevelVar, configured string) {

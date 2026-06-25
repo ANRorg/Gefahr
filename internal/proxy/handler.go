@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -27,6 +26,7 @@ import (
 type runtimePool struct {
 	backends                []*backend.Backend
 	balancers               map[string]balance.Balancer
+	transport               http.RoundTripper
 	retry                   config.Retry
 	passiveFailureThreshold int
 }
@@ -35,7 +35,8 @@ type runtimePool struct {
 type Handler struct {
 	router       *routing.Router
 	pools        map[string]*runtimePool
-	transport    http.RoundTripper
+	rateLimiters map[string]*rateLimiter
+	clientIP     *clientIPPolicy
 	maxBodyBytes int64
 	requestSlots chan struct{}
 	cache        *responsecache.Cache
@@ -63,12 +64,21 @@ func NewHandler(cfg config.Config, transport http.RoundTripper, options ...Optio
 	if err := config.Validate(cfg); err != nil {
 		return nil, err
 	}
-	if transport == nil {
-		transport = NewTransport(cfg)
+	clientIP, err := newClientIPPolicy(cfg.ClientIP)
+	if err != nil {
+		return nil, fmt.Errorf("configure client IP policy: %w", err)
 	}
-	h := &Handler{router: routing.New(cfg.Routes), pools: make(map[string]*runtimePool, len(cfg.Pools)), transport: transport, maxBodyBytes: cfg.Limits.MaxBodyBytes, requestSlots: make(chan struct{}, cfg.Limits.MaxConcurrentRequests), cache: responsecache.New(cfg.Cache.MaxEntries, cfg.Cache.MaxBytes), cacheTTL: cfg.Cache.DefaultTTL.Value(), maxCacheBody: cfg.Cache.MaxBytes}
+	h := &Handler{router: routing.New(cfg.Routes), pools: make(map[string]*runtimePool, len(cfg.Pools)), rateLimiters: make(map[string]*rateLimiter), clientIP: clientIP, maxBodyBytes: cfg.Limits.MaxBodyBytes, requestSlots: make(chan struct{}, cfg.Limits.MaxConcurrentRequests), cache: responsecache.New(cfg.Cache.MaxEntries, cfg.Cache.MaxBytes), cacheTTL: cfg.Cache.DefaultTTL.Value(), maxCacheBody: cfg.Cache.MaxBytes}
 	for name, poolCfg := range cfg.Pools {
-		pool := &runtimePool{retry: poolCfg.Retry, passiveFailureThreshold: poolCfg.Health.UnhealthyThreshold, balancers: map[string]balance.Balancer{"round_robin": &balance.RoundRobin{}, "least_connections": &balance.LeastConnections{}}}
+		poolTransport := transport
+		if poolTransport == nil {
+			var err error
+			poolTransport, err = NewPoolTransport(cfg, poolCfg)
+			if err != nil {
+				return nil, fmt.Errorf("configure pool %s transport: %w", name, err)
+			}
+		}
+		pool := &runtimePool{transport: poolTransport, retry: poolCfg.Retry, passiveFailureThreshold: poolCfg.Health.UnhealthyThreshold, balancers: map[string]balance.Balancer{"round_robin": &balance.RoundRobin{}, "least_connections": &balance.LeastConnections{}}}
 		for _, backendCfg := range poolCfg.Backends {
 			target, err := url.Parse(backendCfg.URL)
 			if err != nil {
@@ -77,6 +87,11 @@ func NewHandler(cfg config.Config, transport http.RoundTripper, options ...Optio
 			pool.backends = append(pool.backends, backend.New(backendCfg.Name, target))
 		}
 		h.pools[name] = pool
+	}
+	for _, route := range cfg.Routes {
+		if route.RateLimit.Enabled {
+			h.rateLimiters[route.Name] = newRateLimiter(route.RateLimit)
+		}
 	}
 	for _, option := range options {
 		option(h)
@@ -121,6 +136,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	pool := h.pools[route.Pool]
 	routeName = route.Name
+	clientIP := h.clientIP.Identity(r)
+	if limiter := h.rateLimiters[route.Name]; limiter != nil {
+		if allowed, retryAfter := limiter.Allow(clientIP); !allowed {
+			h.observeRateLimit(route.Name, false)
+			w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds(retryAfter), 10))
+			writeError(w, http.StatusTooManyRequests, "rate_limited", "request rate limit exceeded")
+			return
+		}
+		h.observeRateLimit(route.Name, true)
+	}
 	select {
 	case h.requestSlots <- struct{}{}:
 		defer func() { <-h.requestSlots }()
@@ -152,7 +177,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	target := selected.URL()
 	originalHost := r.Host
-	retrying := &retryTransport{base: h.transport, poolName: route.Pool, pool: pool, balancer: pool.balancers[route.Strategy], first: selected, firstRelease: release, original: r, rewriteHost: route.RewriteHost, attempts: 1, lastBackend: selected.Name(), handler: h}
+	retrying := &retryTransport{base: pool.transport, poolName: route.Pool, pool: pool, balancer: pool.balancers[route.Strategy], first: selected, firstRelease: release, original: r, rewriteHost: route.RewriteHost, attempts: 1, lastBackend: selected.Name(), handler: h}
 	defer func() { attempts, backendName = retrying.attempts, retrying.lastBackend }()
 	rp := &httputil.ReverseProxy{
 		Transport: retrying,
@@ -161,8 +186,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if !route.RewriteHost {
 				req.Out.Host = originalHost
 			}
-			req.SetXForwarded()
-			req.Out.Header.Set("Forwarded", forwardedValue(req.In))
+			setForwardingHeaders(req, clientIP)
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			var tooLarge *http.MaxBytesError
@@ -193,6 +217,34 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rp.ServeHTTP(w, r)
+}
+
+func retryAfterSeconds(duration time.Duration) int64 {
+	if duration <= 0 {
+		return 1
+	}
+	seconds := int64((duration + time.Second - 1) / time.Second)
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
+}
+
+func (h *Handler) observeRateLimit(route string, allowed bool) {
+	if h.observer == nil {
+		return
+	}
+	observer, ok := h.observer.(interface {
+		ObserveRateLimit(route, decision string)
+	})
+	if !ok {
+		return
+	}
+	decision := "allowed"
+	if !allowed {
+		decision = "limited"
+	}
+	observer.ObserveRateLimit(route, decision)
 }
 
 func writeCached(w http.ResponseWriter, response responsecache.Response) {
@@ -424,24 +476,39 @@ func (h *Handler) Retire() {
 }
 
 func (h *Handler) closeIdleConnections() {
-	if closer, ok := h.transport.(interface{ CloseIdleConnections() }); ok {
-		closer.CloseIdleConnections()
+	for _, pool := range h.pools {
+		if closer, ok := pool.transport.(interface{ CloseIdleConnections() }); ok {
+			closer.CloseIdleConnections()
+		}
 	}
 }
 
-func forwardedValue(r *http.Request) string {
-	client := r.RemoteAddr
-	if host, _, err := net.SplitHostPort(client); err == nil {
-		client = host
-	}
-	if ip := net.ParseIP(client); ip != nil && ip.To4() == nil {
-		client = "[" + client + "]"
-	}
+func setForwardingHeaders(req *httputil.ProxyRequest, client string) {
+	proto := requestProto(req.In)
+	req.Out.Header.Set("X-Forwarded-For", client)
+	req.Out.Header.Set("X-Forwarded-Host", req.In.Host)
+	req.Out.Header.Set("X-Forwarded-Proto", proto)
+	req.Out.Header.Set("Forwarded", forwardedValue(req.In, client, proto))
+}
+
+func forwardedValue(r *http.Request, client, proto string) string {
+	client = forwardedNode(client)
+	return "for=" + quoteForwarded(client) + ";host=" + quoteForwarded(r.Host) + ";proto=" + proto
+}
+
+func requestProto(r *http.Request) string {
 	proto := "http"
 	if r.TLS != nil {
 		proto = "https"
 	}
-	return "for=" + quoteForwarded(client) + ";host=" + quoteForwarded(r.Host) + ";proto=" + proto
+	return proto
+}
+
+func forwardedNode(client string) string {
+	if strings.Contains(client, ":") && !strings.HasPrefix(client, "[") {
+		return "[" + client + "]"
+	}
+	return client
 }
 
 func quoteForwarded(value string) string {

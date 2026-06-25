@@ -1,0 +1,227 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: goproxy
+  labels:
+    app.kubernetes.io/name: goproxy
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: goproxy-admin
+  namespace: goproxy
+  labels:
+    app.kubernetes.io/name: goproxy
+type: Opaque
+stringData:
+  admin-token: change-me-before-deploy
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: goproxy-config
+  namespace: goproxy
+  labels:
+    app.kubernetes.io/name: goproxy
+data:
+  proxy.yaml: |
+    listeners:
+      - address: ":8080"
+    admin:
+      address: ":9090"
+      auth_token_env: GOPROXY_ADMIN_TOKEN
+    routes:
+      - name: app
+        host: example.com
+        path_prefix: /
+        pool: app
+        strategy: round_robin
+        cache:
+          enabled: false
+        rate_limit:
+          enabled: true
+          requests: 300
+          window: 1m
+          max_keys: 10000
+    pools:
+      app:
+        backends:
+          - name: app-1
+            url: http://app.default.svc.cluster.local:8080
+        health:
+          path: /health
+          interval: 5s
+          timeout: 1s
+          unhealthy_threshold: 2
+          healthy_threshold: 1
+        retry:
+          max_attempts: 2
+    timeouts:
+      read_header: 10s
+      read_body: 30s
+      write: 2m
+      idle: 60s
+      shutdown: 30s
+      dial: 5s
+      response_header: 30s
+    limits:
+      max_header_bytes: 16384
+      max_body_bytes: 10485760
+      max_concurrent_requests: 1024
+      max_connections: 4096
+    client_ip:
+      trusted_proxies:
+        - 10.0.0.0/8
+      headers:
+        - X-Forwarded-For
+        - X-Real-IP
+    cache:
+      max_entries: 1000
+      max_bytes: 67108864
+      default_ttl: 30s
+    logging:
+      level: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: goproxy
+  namespace: goproxy
+  labels:
+    app.kubernetes.io/name: goproxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: goproxy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: goproxy
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: goproxy
+          image: ghcr.io/anouarmohamed/gefahr:v1.0.1
+          imagePullPolicy: IfNotPresent
+          args: ["-config", "/etc/goproxy/proxy.yaml"]
+          env:
+            - name: GOPROXY_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: goproxy-admin
+                  key: admin-token
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: admin
+              containerPort: 9090
+          readinessProbe:
+            exec:
+              command: ["/goproxy", "-healthcheck", "http://127.0.0.1:9090/readyz"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["/goproxy", "-healthcheck", "http://127.0.0.1:9090/livez"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/goproxy
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: goproxy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: goproxy
+  namespace: goproxy
+  labels:
+    app.kubernetes.io/name: goproxy
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: goproxy
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: goproxy-admin
+  namespace: goproxy
+  labels:
+    app.kubernetes.io/name: goproxy
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: goproxy
+  ports:
+    - name: admin
+      port: 9090
+      targetPort: admin
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: goproxy-ingress
+  namespace: goproxy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: goproxy
+  policyTypes: ["Ingress"]
+  ingress:
+    - ports:
+        - port: 8080
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 9090
+          protocol: TCP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: goproxy
+  namespace: goproxy
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: goproxy

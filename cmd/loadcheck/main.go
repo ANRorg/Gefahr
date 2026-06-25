@@ -91,7 +91,14 @@ func runLoad(client *http.Client, target string, requests, concurrency int) (int
 }
 
 func scrape(client *http.Client, target string) (map[string]float64, error) {
-	resp, err := client.Get(target)
+	request, err := http.NewRequest(http.MethodGet, target, nil)
+	if err != nil {
+		return nil, err
+	}
+	if token := os.Getenv("GOPROXY_ADMIN_TOKEN"); token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}

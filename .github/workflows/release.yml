@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -52,6 +54,23 @@ jobs:
           done
           rmdir dist/stage
           (cd dist && sha256sum gefahr_* > checksums.txt)
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/goproxy.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Attest binary provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/gefahr_*
+      - name: Attest binary SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/gefahr_*
+          sbom-path: dist/goproxy.spdx.json
       - name: Create release when absent
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,6 +96,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -103,7 +124,8 @@ jobs:
             echo "$tags"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           target: runtime
@@ -119,3 +141,24 @@ jobs:
             org.opencontainers.image.version=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.image.outputs.name }}:${{ github.ref_name }}
+          format: spdx-json
+          output-file: image.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Attest image provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Attest image SBOM
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: image.spdx.json
+          push-to-registry: true

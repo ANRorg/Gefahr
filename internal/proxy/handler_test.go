@@ -113,10 +113,31 @@ func TestHandlerReplacesUntrustedForwardingHeaders(t *testing.T) {
 	}
 }
 
+func TestHandlerUsesTrustedProxyForwardingHeader(t *testing.T) {
+	cfg := proxyConfig()
+	cfg.ClientIP.TrustedProxies = []string{"10.0.0.0/8"}
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if got := r.Header.Get("X-Forwarded-For"); got != "198.51.100.7" {
+			t.Fatalf("X-Forwarded-For = %q", got)
+		}
+		if got := r.Header.Get("Forwarded"); got != `for="198.51.100.7";host="api.test";proto=http` {
+			t.Fatalf("Forwarded = %q", got)
+		}
+		return &http.Response{StatusCode: http.StatusNoContent, Header: make(http.Header), Body: http.NoBody}, nil
+	})
+	h, err := NewHandler(cfg, transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
+	req.RemoteAddr = "10.0.0.5:4321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.99, 198.51.100.7, 10.0.0.5")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+}
+
 func TestForwardedHeaderFormatsIPv6Client(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
-	request.RemoteAddr = "[2001:db8::1]:4321"
-	if got := forwardedValue(request); got != `for="[2001:db8::1]";host="api.test";proto=http` {
+	if got := forwardedValue(request, "2001:db8::1", "http"); got != `for="[2001:db8::1]";host="api.test";proto=http` {
 		t.Fatalf("Forwarded = %q", got)
 	}
 }
@@ -363,6 +384,106 @@ func TestHandlerRejectsRequestAboveConcurrencyLimit(t *testing.T) {
 	<-done
 }
 
+func TestHandlerRateLimitsPerClientAndRoute(t *testing.T) {
+	cfg := proxyConfig()
+	cfg.Routes[0].RateLimit = config.RateLimit{Enabled: true, Requests: 1, Window: config.Duration(time.Minute), MaxKeys: 10}
+	calls := 0
+	h, err := NewHandler(cfg, roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := httptest.NewRecorder()
+	firstReq := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
+	firstReq.RemoteAddr = "192.0.2.10:1234"
+	h.ServeHTTP(first, firstReq)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d", first.Code)
+	}
+
+	limited := httptest.NewRecorder()
+	limitedReq := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
+	limitedReq.RemoteAddr = "192.0.2.10:5678"
+	h.ServeHTTP(limited, limitedReq)
+	if limited.Code != http.StatusTooManyRequests || !strings.Contains(limited.Body.String(), "rate_limited") || limited.Header().Get("Retry-After") == "" {
+		t.Fatalf("limited response = %d headers=%v body=%q", limited.Code, limited.Header(), limited.Body.String())
+	}
+
+	otherClient := httptest.NewRecorder()
+	otherReq := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
+	otherReq.RemoteAddr = "192.0.2.11:1234"
+	h.ServeHTTP(otherClient, otherReq)
+	if otherClient.Code != http.StatusOK {
+		t.Fatalf("other client status = %d", otherClient.Code)
+	}
+	if calls != 2 {
+		t.Fatalf("upstream calls = %d", calls)
+	}
+}
+
+func TestHandlerObservesRateLimitDecisions(t *testing.T) {
+	cfg := proxyConfig()
+	cfg.Routes[0].RateLimit = config.RateLimit{Enabled: true, Requests: 1, Window: config.Duration(time.Minute), MaxKeys: 10}
+	observer := &recordingObserver{}
+	h, err := NewHandler(cfg, roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	}), WithObserver(observer))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
+		req.RemoteAddr = "192.0.2.10:1234"
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	if got := strings.Join(observer.rateLimitDecisions, ","); got != "api:allowed,api:limited" {
+		t.Fatalf("rate limit decisions = %q", got)
+	}
+}
+
+func TestHandlerRateLimitUsesTrustedClientIdentity(t *testing.T) {
+	cfg := proxyConfig()
+	cfg.ClientIP.TrustedProxies = []string{"10.0.0.0/8"}
+	cfg.Routes[0].RateLimit = config.RateLimit{Enabled: true, Requests: 1, Window: config.Duration(time.Minute), MaxKeys: 10}
+	h, err := NewHandler(cfg, roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first := httptest.NewRecorder()
+	firstReq := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
+	firstReq.RemoteAddr = "10.0.0.5:1234"
+	firstReq.Header.Set("X-Forwarded-For", "198.51.100.7")
+	h.ServeHTTP(first, firstReq)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d", first.Code)
+	}
+
+	limited := httptest.NewRecorder()
+	limitedReq := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
+	limitedReq.RemoteAddr = "10.0.0.6:1234"
+	limitedReq.Header.Set("X-Forwarded-For", "198.51.100.7")
+	h.ServeHTTP(limited, limitedReq)
+	if limited.Code != http.StatusTooManyRequests {
+		t.Fatalf("limited status = %d", limited.Code)
+	}
+
+	otherClient := httptest.NewRecorder()
+	otherReq := httptest.NewRequest(http.MethodGet, "http://api.test/api", nil)
+	otherReq.RemoteAddr = "10.0.0.6:1234"
+	otherReq.Header.Set("X-Forwarded-For", "198.51.100.8")
+	h.ServeHTTP(otherClient, otherReq)
+	if otherClient.Code != http.StatusOK {
+		t.Fatalf("other status = %d", otherClient.Code)
+	}
+}
+
 type statusSequenceWriter struct {
 	header   http.Header
 	statuses []int
@@ -389,3 +510,14 @@ func (t *retirementTransport) CloseIdleConnections() { t.closes.Add(1) }
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+type recordingObserver struct {
+	rateLimitDecisions []string
+}
+
+func (o *recordingObserver) ObserveRequest(string, string, string, string, string, int, int, string, time.Duration) {
+}
+
+func (o *recordingObserver) ObserveRateLimit(route, decision string) {
+	o.rateLimitDecisions = append(o.rateLimitDecisions, route+":"+decision)
+}

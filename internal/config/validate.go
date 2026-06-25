@@ -4,12 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
 )
 
-var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+var (
+	identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+	envNamePattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+)
 
 // Validate reports all configuration errors that can be checked without
 // opening listeners or contacting upstreams.
@@ -41,6 +45,9 @@ func Validate(cfg Config) error {
 	}
 	if cfg.Admin.Address == "" {
 		errs = append(errs, errors.New("admin.address is required"))
+	}
+	if cfg.Admin.AuthTokenEnv != "" && !envNamePattern.MatchString(cfg.Admin.AuthTokenEnv) {
+		errs = append(errs, fmt.Errorf("admin.auth_token_env must match %s", envNamePattern))
 	}
 	if seenListeners[cfg.Admin.Address] {
 		errs = append(errs, errors.New("admin address must differ from public listeners"))
@@ -83,6 +90,14 @@ func Validate(cfg Config) error {
 		if route.Strategy != "round_robin" && route.Strategy != "least_connections" {
 			errs = append(errs, fmt.Errorf("%s.strategy must be round_robin or least_connections", field))
 		}
+		if route.RateLimit.Enabled {
+			if route.RateLimit.Requests <= 0 || route.RateLimit.Window <= 0 {
+				errs = append(errs, fmt.Errorf("%s.rate_limit requires positive requests and window", field))
+			}
+			if route.RateLimit.MaxKeys < 0 || route.RateLimit.MaxKeys > 1000000 {
+				errs = append(errs, fmt.Errorf("%s.rate_limit.max_keys must be between 0 and 1000000", field))
+			}
+		}
 	}
 
 	totalBackends := 0
@@ -95,15 +110,28 @@ func Validate(cfg Config) error {
 			errs = append(errs, fmt.Errorf("pool %q requires at least one backend", name))
 		}
 		seenBackends := map[string]bool{}
+		hasHTTPSBackend := false
 		for i, backend := range pool.Backends {
 			u, err := url.Parse(backend.URL)
 			if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Fragment != "" {
 				errs = append(errs, fmt.Errorf("pools.%s.backends[%d].url must be an absolute http(s) URL", name, i))
 			}
+			if err == nil && u.Scheme == "https" {
+				hasHTTPSBackend = true
+			}
 			if seenBackends[backend.Name] || !identifierPattern.MatchString(backend.Name) {
 				errs = append(errs, fmt.Errorf("pools.%s backend names must match %s and be unique", name, identifierPattern))
 			}
 			seenBackends[backend.Name] = true
+		}
+		if poolTLSConfigured(pool.TLS) && !hasHTTPSBackend {
+			errs = append(errs, fmt.Errorf("pools.%s.tls requires at least one https backend", name))
+		}
+		if (pool.TLS.ClientCertFile == "") != (pool.TLS.ClientKeyFile == "") {
+			errs = append(errs, fmt.Errorf("pools.%s.tls requires both client_cert_file and client_key_file", name))
+		}
+		if pool.TLS.ServerName != strings.TrimSpace(pool.TLS.ServerName) {
+			errs = append(errs, fmt.Errorf("pools.%s.tls.server_name must not contain surrounding whitespace", name))
 		}
 		if pool.Health.Path == "" || !strings.HasPrefix(pool.Health.Path, "/") || ambiguousPath(pool.Health.Path) || strings.ContainsAny(pool.Health.Path, "?#") {
 			errs = append(errs, fmt.Errorf("pools.%s.health.path must start with /", name))
@@ -129,6 +157,35 @@ func Validate(cfg Config) error {
 	}
 	if cfg.Limits.MaxConnections > 1000000 {
 		errs = append(errs, errors.New("limits.max_connections must not exceed 1000000"))
+	}
+	if len(cfg.ClientIP.TrustedProxies) > 128 {
+		errs = append(errs, errors.New("client_ip.trusted_proxies must not exceed 128 entries"))
+	}
+	for i, cidr := range cfg.ClientIP.TrustedProxies {
+		if cidr != strings.TrimSpace(cidr) {
+			errs = append(errs, fmt.Errorf("client_ip.trusted_proxies[%d] must not contain surrounding whitespace", i))
+			continue
+		}
+		if _, err := netip.ParsePrefix(cidr); err != nil {
+			errs = append(errs, fmt.Errorf("client_ip.trusted_proxies[%d] must be a CIDR prefix", i))
+		}
+	}
+	if len(cfg.ClientIP.Headers) > 0 && len(cfg.ClientIP.TrustedProxies) == 0 {
+		errs = append(errs, errors.New("client_ip.headers requires client_ip.trusted_proxies"))
+	}
+	seenClientIPHeaders := map[string]bool{}
+	for i, header := range cfg.ClientIP.Headers {
+		normalized := strings.ToLower(strings.TrimSpace(header))
+		if header != strings.TrimSpace(header) {
+			errs = append(errs, fmt.Errorf("client_ip.headers[%d] must not contain surrounding whitespace", i))
+		}
+		if normalized != "x-forwarded-for" && normalized != "x-real-ip" {
+			errs = append(errs, fmt.Errorf("client_ip.headers[%d] must be X-Forwarded-For or X-Real-IP", i))
+		}
+		if seenClientIPHeaders[normalized] {
+			errs = append(errs, fmt.Errorf("client_ip header %q is duplicated", header))
+		}
+		seenClientIPHeaders[normalized] = true
 	}
 	if cfg.Cache.MaxEntries <= 0 || cfg.Cache.MaxBytes <= 0 || cfg.Cache.DefaultTTL <= 0 {
 		errs = append(errs, errors.New("all cache bounds must be positive"))
@@ -158,4 +215,8 @@ func ambiguousPath(value string) bool {
 		}
 	}
 	return false
+}
+
+func poolTLSConfigured(tls PoolTLS) bool {
+	return tls.CAFile != "" || tls.ServerName != "" || tls.ClientCertFile != "" || tls.ClientKeyFile != "" || tls.InsecureSkipVerify
 }

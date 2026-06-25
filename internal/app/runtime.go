@@ -134,6 +134,9 @@ func immutableCompatible(current, next config.Config) error {
 	if current.Admin.Address != next.Admin.Address {
 		errs = append(errs, errors.New("admin.address requires restart"))
 	}
+	if current.Admin.AuthTokenEnv != next.Admin.AuthTokenEnv {
+		errs = append(errs, errors.New("admin.auth_token_env requires restart"))
+	}
 	if len(current.Listeners) != len(next.Listeners) {
 		errs = append(errs, errors.New("listener count requires restart"))
 		return errors.Join(errs...)

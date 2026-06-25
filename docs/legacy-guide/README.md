@@ -1,5 +1,11 @@
 # Reverse Proxy From Scratch
 
+> Archived guide: this directory is retained as the original learning lab. It is
+> not the current product acceptance source for Gefahr. The implemented proxy
+> follows [ADR 0001](../adr/0001-proxy-foundation.md), which intentionally uses
+> Go's maintained `net/http` and `httputil.ReverseProxy` stack instead of manual
+> HTTP parsing. See the current [product-readiness status](../completion.md).
+
 A guided, phase-by-phase build of a production-usable HTTP reverse proxy in Go —
 written entirely on top of standard-library primitives (`net`, `bufio`, `tls`,
 `io`), with **no** `net/http/httputil.ReverseProxy` and no third-party proxy

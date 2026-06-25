@@ -4,12 +4,13 @@
 
 Gefahr is a configurable Go reverse proxy with host/path routing, round-robin
 and least-connections balancing, active and passive health tracking, bounded
-response caching, static TLS termination, structured logs, and Prometheus
-metrics.
+response caching, per-route rate limiting, static TLS termination, upstream TLS
+controls, structured logs, and Prometheus metrics.
 
 The data plane uses Go's maintained `httputil.ReverseProxy`; Gefahr owns the
 policy around it. See [the architecture decision](docs/adr/0001-proxy-foundation.md)
-and [architecture overview](docs/architecture.md).
+and [architecture overview](docs/architecture.md). Current product-readiness
+status is tracked in [completion status](docs/completion.md).
 
 ## Quick start
 
@@ -38,8 +39,9 @@ docker compose up --build
 curl http://localhost:8080/
 ```
 
-Tagged releases publish checksummed Linux, macOS, and Windows archives. The
-multi-architecture container image is available as
+Tagged releases publish checksummed Linux, macOS, and Windows archives, SPDX
+SBOMs, and GitHub provenance/SBOM attestations. The multi-architecture
+container image is available as
 `ghcr.io/anouarmohamed/gefahr:<version>` for Linux AMD64 and ARM64.
 
 The production image runs its health check against the private `/readyz`
@@ -63,7 +65,8 @@ backend URLs, then pass it with `-config`.
   `/metrics`.
 
 See the [configuration reference](docs/configuration.md) and
-[operations runbook](docs/operations.md).
+[operations runbook](docs/operations.md). Kubernetes deployment guidance is in
+[the hardened baseline](docs/deployment-kubernetes.md).
 
 ## Development
 
@@ -97,9 +100,9 @@ complete final gate and expected evidence.
   committed.
 
 Version 1 does not include HTTP/3, ACME, dynamic service discovery, distributed
-caching, cache revalidation, `Vary` variants, a mutation API, or per-route
-authentication. The response write timeout limits very long-lived streams;
-WebSocket-specific behavior is not an acceptance target. See
+caching, cache revalidation, `Vary` variants, a mutation API, WAF behavior, or
+per-route authentication. The response write timeout limits very long-lived
+streams; WebSocket-specific behavior is not an acceptance target. See
 [security and limitations](docs/security.md).
 
 ## License

@@ -13,12 +13,13 @@ import (
 func TestHandlerExposesRequestAndBackendMetrics(t *testing.T) {
 	m := New()
 	m.ObserveRequest("request-id", "api", http.MethodGet, "/items", "one", 200, 2, "hit", 25*time.Millisecond)
+	m.ObserveRateLimit("api", "limited")
 	m.SetBackendHealth("api", "one", true)
 	m.SetBackendActive("api", "one", 3)
 	recorder := httptest.NewRecorder()
 	m.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body := recorder.Body.String()
-	for _, expected := range []string{`goproxy_requests_total{method="GET",route="api",status="200"} 1`, `goproxy_retries_total{route="api"} 1`, `goproxy_backend_healthy{backend="one",pool="api"} 1`} {
+	for _, expected := range []string{`goproxy_requests_total{method="GET",route="api",status="200"} 1`, `goproxy_rate_limit_decisions_total{decision="limited",route="api"} 1`, `goproxy_retries_total{route="api"} 1`, `goproxy_backend_healthy{backend="one",pool="api"} 1`} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("metrics missing %q", expected)
 		}
@@ -41,14 +42,16 @@ func TestReconcileConfigBoundsLabelsAcrossReloads(t *testing.T) {
 	cfg.Routes = []config.Route{{Name: "current"}}
 	cfg.Pools["pool"] = config.Pool{Backends: []config.Backend{{Name: "current"}}}
 	m.ObserveRequest("", "old", http.MethodGet, "", "", 200, 1, "bypass", time.Second)
+	m.ObserveRateLimit("old", "allowed")
 	m.SetBackendHealth("old", "old", true)
 	m.ReconcileConfig(cfg)
-	if len(m.requests) != 0 || len(m.health) != 0 {
-		t.Fatalf("stale metrics survived: requests=%v health=%v", m.requests, m.health)
+	if len(m.requests) != 0 || len(m.rateLimits) != 0 || len(m.health) != 0 {
+		t.Fatalf("stale metrics survived: requests=%v rate_limits=%v health=%v", m.requests, m.rateLimits, m.health)
 	}
 	m.ObserveRequest("", "removed", http.MethodGet, "", "", 200, 1, "bypass", time.Second)
+	m.ObserveRateLimit("removed", "allowed")
 	m.SetBackendHealth("removed", "removed", true)
-	if m.requests[requestKey{"retired", http.MethodGet, 200}] != 1 || len(m.health) != 0 {
-		t.Fatalf("late labels were not bounded: requests=%v health=%v", m.requests, m.health)
+	if m.requests[requestKey{"retired", http.MethodGet, 200}] != 1 || m.rateLimits[rateLimitKey{"retired", "allowed"}] != 1 || len(m.health) != 0 {
+		t.Fatalf("late labels were not bounded: requests=%v rate_limits=%v health=%v", m.requests, m.rateLimits, m.health)
 	}
 }

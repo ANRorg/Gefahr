@@ -41,6 +41,65 @@ func TestValidateRejectsAdminCollision(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsInvalidAdminTokenEnvironment(t *testing.T) {
+	cfg := validConfig()
+	cfg.Admin.AuthTokenEnv = "invalid-name"
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "auth_token_env") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateRejectsInvalidRateLimit(t *testing.T) {
+	cfg := validConfig()
+	cfg.Routes[0].RateLimit = RateLimit{Enabled: true, Requests: 0, Window: Duration(time.Minute)}
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "rate_limit") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateRejectsInvalidClientIPPolicy(t *testing.T) {
+	tests := []func(*Config){
+		func(cfg *Config) { cfg.ClientIP.TrustedProxies = []string{"10.0.0.0"} },
+		func(cfg *Config) { cfg.ClientIP.Headers = []string{"X-Forwarded-For"} },
+		func(cfg *Config) {
+			cfg.ClientIP.TrustedProxies = []string{"10.0.0.0/8"}
+			cfg.ClientIP.Headers = []string{"Forwarded"}
+		},
+		func(cfg *Config) {
+			cfg.ClientIP.TrustedProxies = []string{"10.0.0.0/8"}
+			cfg.ClientIP.Headers = []string{"X-Real-IP", "x-real-ip"}
+		},
+	}
+	for i, mutate := range tests {
+		cfg := validConfig()
+		mutate(&cfg)
+		if err := Validate(cfg); err == nil {
+			t.Fatalf("case %d was accepted", i)
+		}
+	}
+}
+
+func TestValidateRejectsIncompleteUpstreamTLS(t *testing.T) {
+	cfg := validConfig()
+	pool := cfg.Pools["api"]
+	pool.Backends[0].URL = "https://127.0.0.1:9001"
+	pool.TLS.ClientCertFile = "client.crt"
+	cfg.Pools["api"] = pool
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "client_key_file") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateRejectsTLSOnHTTPOnlyPool(t *testing.T) {
+	cfg := validConfig()
+	pool := cfg.Pools["api"]
+	pool.TLS.ServerName = "api.internal"
+	cfg.Pools["api"] = pool
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "https backend") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestValidateRejectsAmbiguousRoutingAndBackendURLs(t *testing.T) {
 	tests := []func(*Config){
 		func(cfg *Config) { cfg.Routes[0].PathPrefix = "/public/../admin" },

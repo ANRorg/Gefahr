@@ -87,7 +87,7 @@ func (h *Handler) StartHealthChecks(ctx context.Context, cfg config.Config) {
 		}
 		checker := &backend.Checker{
 			Backends: pool.backends,
-			Client:   newHealthClient(h.transport),
+			Client:   newHealthClient(pool.transport),
 			Policy:   backend.HealthPolicy{Path: policy.Path, Interval: policy.Interval.Value(), Timeout: policy.Timeout.Value(), HealthyThreshold: policy.HealthyThreshold, UnhealthyThreshold: policy.UnhealthyThreshold},
 		}
 		if observer != nil {

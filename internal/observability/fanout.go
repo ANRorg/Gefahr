@@ -11,6 +11,11 @@ type RequestObserver interface {
 	ObserveRequest(requestID, route, method, path, backend string, status, attempts int, cacheResult string, duration time.Duration)
 }
 
+// RateLimitObserver receives configured route rate-limit decisions.
+type RateLimitObserver interface {
+	ObserveRateLimit(route, decision string)
+}
+
 // BackendObserver receives backend gauge updates.
 type BackendObserver interface {
 	SetBackendHealth(pool, backend string, healthy bool)
@@ -27,6 +32,15 @@ type Fanout struct {
 func (f Fanout) ObserveRequest(requestID, route, method, path, backend string, status, attempts int, cacheResult string, duration time.Duration) {
 	for _, observer := range f.Requests {
 		observer.ObserveRequest(requestID, route, method, path, backend, status, attempts, cacheResult, duration)
+	}
+}
+
+// ObserveRateLimit forwards rate-limit decisions to capable request observers.
+func (f Fanout) ObserveRateLimit(route, decision string) {
+	for _, observer := range f.Requests {
+		if observer, ok := observer.(RateLimitObserver); ok {
+			observer.ObserveRateLimit(route, decision)
+		}
 	}
 }
 

@@ -29,5 +29,21 @@ throughput and memory numbers to this document.
 
 Pushing an annotated `v*` tag runs the release workflow. It creates the GitHub
 release when necessary, uploads checksummed archives for supported operating
-systems, and publishes AMD64/ARM64 images to GHCR. Confirm both workflow jobs
-complete before announcing the release.
+systems, publishes AMD64/ARM64 images to GHCR, generates SPDX SBOMs, and
+creates GitHub artifact attestations for binaries and container images. Confirm
+both workflow jobs complete before announcing the release.
+
+Verify release integrity from a machine with GitHub CLI access:
+
+```sh
+gh attestation verify dist/gefahr_1.0.2_linux_amd64.tar.gz -R AnouarMohamed/Gefahr
+gh attestation verify oci://ghcr.io/anouarmohamed/gefahr:v1.0.2 -R AnouarMohamed/Gefahr
+```
+
+For SBOM attestations, include the SPDX predicate type:
+
+```sh
+gh attestation verify dist/gefahr_1.0.2_linux_amd64.tar.gz \
+  -R AnouarMohamed/Gefahr \
+  --predicate-type https://spdx.dev/Document/v2.3
+```
