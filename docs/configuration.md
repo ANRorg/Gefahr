@@ -54,7 +54,9 @@ When the direct peer matches one of those CIDRs, Gefahr evaluates
 
 For `X-Forwarded-For`, Gefahr walks the chain from right to left, skips trusted
 proxy hops, and uses the first untrusted address. This avoids trusting a
-leftmost spoofed value appended by a client before the trusted ingress.
+leftmost spoofed value appended by a client before the trusted ingress. Valid
+`IP:port` and `[IPv6]:port` entries are accepted for compatibility with managed
+load balancers that include client ports.
 
 ## Pools
 

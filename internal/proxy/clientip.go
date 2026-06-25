@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
 
 	"github.com/anouar/goproxy/internal/config"
@@ -98,6 +99,11 @@ func remoteIP(remoteAddr string) string {
 
 func validIP(value string) string {
 	value = strings.TrimSpace(value)
+	if host, port, err := net.SplitHostPort(value); err == nil {
+		if _, err := strconv.ParseUint(port, 10, 16); err == nil {
+			value = host
+		}
+	}
 	value = strings.Trim(value, "[]")
 	addr, err := netip.ParseAddr(value)
 	if err != nil {

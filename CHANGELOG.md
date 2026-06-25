@@ -16,10 +16,14 @@ Semantic Versioning.
 - Add bounded Prometheus metrics for per-route rate-limit admission decisions.
 - Add trusted-proxy-aware client identity extraction for rate limiting and
   rebuilt forwarding headers.
+- Add real-socket HTTP/2 frontend/upstream compatibility tests and a documented
+  compatibility matrix.
 - Add upstream HTTPS trust controls, SNI override, and client certificates for
   backend mTLS.
 - Add a hardened Kubernetes deployment baseline.
 - Add a hardened systemd deployment baseline and production runbooks.
+- Add cloud load balancer deployment notes for AWS ALB, Google Cloud
+  Application Load Balancer, and Azure Application Gateway.
 
 ## [1.0.1] - 2026-06-22
 

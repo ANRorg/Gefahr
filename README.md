@@ -68,7 +68,9 @@ See the [configuration reference](docs/configuration.md) and
 [operations runbook](docs/operations.md). Kubernetes deployment guidance is in
 [the hardened baseline](docs/deployment-kubernetes.md); VM/bare-metal guidance
 is in [the systemd baseline](docs/deployment-systemd.md). Incident and upgrade
-procedures are in [runbooks](docs/runbooks.md).
+procedures are in [runbooks](docs/runbooks.md). Protocol coverage is tracked in
+the [compatibility matrix](docs/compatibility.md), and managed load balancer
+guidance is in [cloud load balancer notes](docs/cloud-load-balancers.md).
 
 ## Development
 

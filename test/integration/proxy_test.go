@@ -4,12 +4,15 @@ package integration_test
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -49,6 +52,74 @@ func TestRoutingBalancingAndCachingOverRealSockets(t *testing.T) {
 	request(t, front.URL+"/cache")
 	if delta := firstCalls.Load() + secondCalls.Load() - before; delta != 1 {
 		t.Fatalf("cache upstream calls = %d", delta)
+	}
+}
+
+func TestHTTP2ClientOverTLS(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Forwarded-Proto"); got != "https" {
+			t.Errorf("X-Forwarded-Proto = %q", got)
+		}
+		if got := r.Header.Get("X-Forwarded-Host"); got != "api.test" {
+			t.Errorf("X-Forwarded-Host = %q", got)
+		}
+		fmt.Fprintf(w, "backend=%s forwarded=%s", r.Proto, r.Header.Get("Forwarded"))
+	}))
+	defer backend.Close()
+
+	handler, err := proxyhandler.NewHandler(proxyConfig(backend.URL), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	front := httptest.NewUnstartedServer(handler)
+	front.EnableHTTP2 = true
+	front.StartTLS()
+	defer front.Close()
+
+	client := front.Client()
+	if transport, ok := client.Transport.(*http.Transport); ok {
+		transport.ForceAttemptHTTP2 = true
+	}
+	req, err := http.NewRequest(http.MethodGet, front.URL+"/h2-client", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "api.test"
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.ProtoMajor != 2 {
+		t.Fatalf("frontend protocol = %s body=%s", resp.Proto, body)
+	}
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "proto=https") {
+		t.Fatalf("response = %d %s", resp.StatusCode, body)
+	}
+}
+
+func TestHTTP2UpstreamOverTLS(t *testing.T) {
+	backend := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "upstream=%s", r.Proto)
+	}))
+	backend.EnableHTTP2 = true
+	backend.StartTLS()
+	defer backend.Close()
+
+	cfg := proxyConfig(backend.URL)
+	pool := cfg.Pools["api"]
+	pool.TLS.CAFile = writeCertificatePEM(t, backend.Certificate())
+	cfg.Pools["api"] = pool
+	handler, err := proxyhandler.NewHandler(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	front := httptest.NewServer(handler)
+	defer front.Close()
+
+	if got := request(t, front.URL+"/h2-upstream"); got != "upstream=HTTP/2.0" {
+		t.Fatalf("upstream protocol response = %q", got)
 	}
 }
 
@@ -145,6 +216,15 @@ func fixture(name string) (*httptest.Server, *atomic.Int64) {
 		fmt.Fprintf(w, "%s:%s", name, r.URL.Path)
 	}))
 	return server, calls
+}
+
+func writeCertificatePEM(t *testing.T, certificate *x509.Certificate) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate.Raw}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func proxyConfig(backendURLs ...string) config.Config {
