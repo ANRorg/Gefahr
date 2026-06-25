@@ -52,3 +52,7 @@ gh attestation verify dist/gefahr_1.0.2_linux_amd64.tar.gz \
   -R AnouarMohamed/Gefahr \
   --predicate-type https://spdx.dev/Document/v2.3
 ```
+
+Before promoting a release to production, complete the
+[production transition checklist](production-transition.md) and attach disaster
+recovery drill evidence from [disaster recovery drills](disaster-recovery.md).

@@ -24,13 +24,12 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 | Kubernetes baseline | Shipped | A hardened manifest includes secret-backed admin auth, exec probes, read-only non-root pods, restricted admin networking, services, and a PodDisruptionBudget. |
 | systemd baseline | Shipped | A hardened service unit and environment-file template cover VM and bare-metal deployments with non-root execution and host-level sandboxing. |
 | Release integrity | Shipped | Release workflow publishes archives/images and generates GitHub provenance and SBOM attestations. |
-| Operations | Partial | Docker Compose, Kubernetes and systemd baselines, cloud load-balancer notes, distroless runtime image, executable health check mode, release acceptance, load-check instructions, and first-pass upgrade/incident runbooks exist. Disaster recovery drills are still thin. |
+| Operations | Shipped | Docker Compose, Kubernetes and systemd baselines, cloud load-balancer notes, distroless runtime image, executable health check mode, release acceptance, load-check instructions, production-transition checklist, incident runbooks, and disaster-recovery drill templates exist. |
 
 ## Product gaps
 
 | Gap | Why it matters |
 |---|---|
-| Disaster recovery drills | Kubernetes, systemd/VM, and cloud load-balancer guidance are covered; restore drills and region/provider failure exercises still need detail. |
 | Traffic protection | Per-route rate limiting exists, but there is no WAF, bot classification, or adaptive abuse-control policy. |
 | Access-control model | Admin auth is bearer-token only and audited; there is no role model or integration with external identity providers. |
 | Release packaging | Tagged archives, images, SBOMs, and attestations exist; package-manager manifests and cosign signatures are not included. |

@@ -3,6 +3,11 @@
 These runbooks assume the admin listener is private and authenticated with
 `admin.auth_token_env`.
 
+Production cutover readiness is tracked in
+[`docs/production-transition.md`](production-transition.md). Disaster recovery
+drills and evidence templates are tracked in
+[`docs/disaster-recovery.md`](disaster-recovery.md).
+
 ## Upgrade
 
 1. Verify the release artifacts and attestations from
@@ -30,6 +35,11 @@ sudo systemctl restart goproxy  # binary or restart-only config rollback
 
 After rollback, confirm `/readyz` returns `200`, request errors have returned to
 baseline, and no old instance is still serving traffic unexpectedly.
+
+Record rollback evidence using the templates in
+[`docs/disaster-recovery.md`](disaster-recovery.md). A rollback procedure is not
+production-ready until it has been run in staging with the same deployment path
+used by production.
 
 ## Elevated 5xx
 

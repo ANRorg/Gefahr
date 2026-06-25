@@ -70,7 +70,10 @@ See the [configuration reference](docs/configuration.md) and
 is in [the systemd baseline](docs/deployment-systemd.md). Incident and upgrade
 procedures are in [runbooks](docs/runbooks.md). Protocol coverage is tracked in
 the [compatibility matrix](docs/compatibility.md), and managed load balancer
-guidance is in [cloud load balancer notes](docs/cloud-load-balancers.md).
+guidance is in [cloud load balancer notes](docs/cloud-load-balancers.md). The
+production cutover checklist is in
+[production transition](docs/production-transition.md), with recovery drills in
+[disaster recovery](docs/disaster-recovery.md).
 
 ## Development
 
