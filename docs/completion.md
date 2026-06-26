@@ -24,7 +24,7 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 | Compatibility | Shipped | The real-socket integration suite covers cleartext HTTP/1.1 clients, TLS HTTP/2 clients, cleartext HTTP/1.1 upstreams, and HTTPS HTTP/2 upstreams; the documented matrix records supported and unsupported paths. |
 | Kubernetes baseline | Shipped | A hardened manifest includes secret-backed admin auth, exec probes, read-only non-root pods, restricted admin networking, services, and a PodDisruptionBudget. |
 | systemd baseline | Shipped | A hardened service unit and environment-file template cover VM and bare-metal deployments with non-root execution and host-level sandboxing. |
-| Release integrity | Shipped | Release workflow publishes archives/images and generates GitHub provenance and SBOM attestations. |
+| Release integrity | Shipped | Release workflow publishes archives, Debian packages, a Homebrew formula artifact, images, checksums, SBOMs, GitHub provenance/SBOM attestations, and keyless cosign signatures. |
 | Operations | Shipped | Docker Compose, Kubernetes and systemd baselines, cloud load-balancer notes, distroless runtime image, executable health check mode, release acceptance, load-check instructions, production-transition checklist, incident runbooks, and disaster-recovery drill templates exist. |
 
 ## Product gaps
@@ -33,7 +33,7 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 |---|---|
 | Traffic protection | Static per-route request guardrails and rate limiting exist, but there is no full WAF rule engine, bot classification, or adaptive abuse-control policy. |
 | Access-control model | Scoped admin bearer tokens exist for health, metrics, read, and admin access, but there is no external identity-provider integration. |
-| Release packaging | Tagged archives, images, SBOMs, and attestations exist; package-manager manifests and cosign signatures are not included. |
+| Package repositories | Release artifacts include Debian packages and a Homebrew formula artifact, but the project does not yet publish to an apt repository or Homebrew tap. |
 
 ## Superseded legacy requirements
 

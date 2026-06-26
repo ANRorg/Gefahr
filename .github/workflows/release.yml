@@ -33,10 +33,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/stage
+          release_version="${VERSION#v}"
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
             goos=${target%/*}
             goarch=${target#*/}
-            asset="gefahr_${VERSION#v}_${goos}_${goarch}"
+            asset="gefahr_${release_version}_${goos}_${goarch}"
             binary=goproxy
             if [ "$goos" = windows ]; then
               binary=goproxy.exe
@@ -50,10 +51,94 @@ jobs:
             else
               tar -C dist/stage -czf "dist/$asset.tar.gz" "$binary"
             fi
+            if [ "$goos" = linux ]; then
+              deb_arch=$goarch
+              if [ "$goarch" = amd64 ]; then
+                deb_arch=amd64
+              elif [ "$goarch" = arm64 ]; then
+                deb_arch=arm64
+              fi
+              pkgroot="dist/package/$asset"
+              install -Dm755 "dist/stage/$binary" "$pkgroot/usr/bin/goproxy"
+              install -Dm644 configs/proxy.example.yaml "$pkgroot/etc/goproxy/proxy.example.yaml"
+              install -Dm644 deploy/systemd/goproxy.service "$pkgroot/lib/systemd/system/goproxy.service"
+              sed -i 's#/usr/local/bin/goproxy#/usr/bin/goproxy#' "$pkgroot/lib/systemd/system/goproxy.service"
+              install -Dm644 deploy/systemd/goproxy.env.example "$pkgroot/etc/goproxy/goproxy.env.example"
+              install -Dm644 LICENSE "$pkgroot/usr/share/doc/gefahr/LICENSE"
+              mkdir -p "$pkgroot/DEBIAN"
+              cat > "$pkgroot/DEBIAN/control" <<EOF
+          Package: gefahr
+          Version: $release_version
+          Section: web
+          Priority: optional
+          Architecture: $deb_arch
+          Maintainer: Gefahr maintainers <noreply@github.com>
+          Homepage: https://github.com/${GITHUB_REPOSITORY}
+          Description: Configurable Go reverse proxy
+           Gefahr is a production-minded reverse proxy with host/path routing,
+           health checks, request policy guardrails, rate limiting, caching,
+           structured logs, and Prometheus metrics.
+          EOF
+              cat > "$pkgroot/DEBIAN/postinst" <<'EOF'
+          #!/bin/sh
+          set -e
+          if ! getent group goproxy >/dev/null; then
+            addgroup --system goproxy >/dev/null
+          fi
+          if ! id -u goproxy >/dev/null 2>&1; then
+            adduser --system --no-create-home --ingroup goproxy --home /var/lib/goproxy --shell /usr/sbin/nologin goproxy >/dev/null
+          fi
+          if command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload || true
+          fi
+          EOF
+              chmod 0755 "$pkgroot/DEBIAN/postinst"
+              dpkg-deb --build --root-owner-group "$pkgroot" "dist/$asset.deb"
+            fi
             rm "dist/stage/$binary"
           done
           rmdir dist/stage
-          (cd dist && sha256sum gefahr_* > checksums.txt)
+          rm -rf dist/package
+          darwin_amd64_sha=$(sha256sum "dist/gefahr_${release_version}_darwin_amd64.tar.gz" | awk '{print $1}')
+          darwin_arm64_sha=$(sha256sum "dist/gefahr_${release_version}_darwin_arm64.tar.gz" | awk '{print $1}')
+          linux_amd64_sha=$(sha256sum "dist/gefahr_${release_version}_linux_amd64.tar.gz" | awk '{print $1}')
+          linux_arm64_sha=$(sha256sum "dist/gefahr_${release_version}_linux_arm64.tar.gz" | awk '{print $1}')
+          cat > dist/gefahr.rb <<EOF
+          class Gefahr < Formula
+            desc "Configurable Go reverse proxy"
+            homepage "https://github.com/${GITHUB_REPOSITORY}"
+            version "$release_version"
+            license "Apache-2.0"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/${GITHUB_REPOSITORY}/releases/download/$VERSION/gefahr_${release_version}_darwin_arm64.tar.gz"
+                sha256 "$darwin_arm64_sha"
+              else
+                url "https://github.com/${GITHUB_REPOSITORY}/releases/download/$VERSION/gefahr_${release_version}_darwin_amd64.tar.gz"
+                sha256 "$darwin_amd64_sha"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/${GITHUB_REPOSITORY}/releases/download/$VERSION/gefahr_${release_version}_linux_arm64.tar.gz"
+                sha256 "$linux_arm64_sha"
+              else
+                url "https://github.com/${GITHUB_REPOSITORY}/releases/download/$VERSION/gefahr_${release_version}_linux_amd64.tar.gz"
+                sha256 "$linux_amd64_sha"
+              end
+            end
+
+            def install
+              bin.install "goproxy"
+            end
+
+            test do
+              assert_match "goproxy version=#{version}", shell_output("#{bin}/goproxy -version")
+            end
+          end
+          EOF
       - name: Generate source SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -62,15 +147,40 @@ jobs:
           output-file: dist/goproxy.spdx.json
           upload-artifact: false
           upload-release-assets: false
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum gefahr_* gefahr.rb goproxy.spdx.json > checksums.txt)
       - name: Attest binary provenance
         uses: actions/attest@v4
         with:
-          subject-path: dist/gefahr_*
+          subject-path: |
+            dist/gefahr_*.tar.gz
+            dist/gefahr_*.zip
+            dist/gefahr_*.deb
+            dist/gefahr.rb
       - name: Attest binary SBOM
         uses: actions/attest@v4
         with:
-          subject-path: dist/gefahr_*
+          subject-path: |
+            dist/gefahr_*.tar.gz
+            dist/gefahr_*.zip
+            dist/gefahr_*.deb
+            dist/gefahr.rb
           sbom-path: dist/goproxy.spdx.json
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign release files
+        run: |
+          set -euo pipefail
+          find dist -maxdepth 1 -type f \( -name 'gefahr_*' -o -name 'gefahr.rb' -o -name 'checksums.txt' -o -name 'goproxy.spdx.json' \) -print0 |
+            sort -z |
+            while IFS= read -r -d '' artifact; do
+              cosign sign-blob --yes \
+                --output-signature "$artifact.sig" \
+                --output-certificate "$artifact.pem" \
+                "$artifact"
+            done
       - name: Create release when absent
         env:
           GH_TOKEN: ${{ github.token }}
@@ -107,6 +217,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
       - name: Resolve image metadata
         id: image
         env:
@@ -162,3 +274,8 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           sbom-path: image.spdx.json
           push-to-registry: true
+      - name: Sign image digest
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"

@@ -34,9 +34,11 @@ throughput and memory numbers to this document.
 
 Pushing an annotated `v*` tag runs the release workflow. It creates the GitHub
 release when necessary, uploads checksummed archives for supported operating
-systems, publishes AMD64/ARM64 images to GHCR, generates SPDX SBOMs, and
-creates GitHub artifact attestations for binaries and container images. Confirm
-both workflow jobs complete before announcing the release.
+systems, publishes Debian packages for Linux AMD64/ARM64, uploads a generated
+Homebrew formula artifact, publishes AMD64/ARM64 images to GHCR, generates SPDX
+SBOMs, creates GitHub artifact attestations for binaries and container images,
+and adds keyless cosign signatures plus signing certificates. Confirm both
+workflow jobs complete before announcing the release.
 
 Verify release integrity from a machine with GitHub CLI access:
 
@@ -52,6 +54,30 @@ gh attestation verify dist/gefahr_1.0.2_linux_amd64.tar.gz \
   -R AnouarMohamed/Gefahr \
   --predicate-type https://spdx.dev/Document/v2.3
 ```
+
+Verify cosign signatures for release files:
+
+```sh
+cosign verify-blob dist/gefahr_1.0.2_linux_amd64.tar.gz \
+  --signature dist/gefahr_1.0.2_linux_amd64.tar.gz.sig \
+  --certificate dist/gefahr_1.0.2_linux_amd64.tar.gz.pem \
+  --certificate-identity-regexp 'https://github.com/AnouarMohamed/Gefahr/.github/workflows/release.yml@refs/tags/v1.0.2' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Verify the signed image digest:
+
+```sh
+cosign verify ghcr.io/anouarmohamed/gefahr:v1.0.2 \
+  --certificate-identity-regexp 'https://github.com/AnouarMohamed/Gefahr/.github/workflows/release.yml@refs/tags/v1.0.2' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Package-manager artifacts are attached to the release but not published to a
+package repository or Homebrew tap. For Debian-based hosts, install the `.deb`
+artifact only after verifying checksums, attestations, and cosign signatures.
+For Homebrew, copy `gefahr.rb` into a tap and review the generated URLs and
+SHA-256 values before publishing.
 
 Before promoting a release to production, complete the
 [production transition checklist](production-transition.md) and attach disaster

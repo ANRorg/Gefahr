@@ -10,6 +10,8 @@ path, observability, and rollback process are ready together.
 - `make coverage` passes the enforced coverage floor.
 - Release artifacts, image digests, checksums, SBOMs, and attestations are
   generated and verified.
+- Cosign signatures for release files and container images are verified.
+- Debian packages or Homebrew formula artifacts are reviewed before use.
 - The production deployment pins an exact image tag or binary checksum.
 - The previous known-good version remains available for rollback.
 
