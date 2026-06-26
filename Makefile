@@ -1,4 +1,4 @@
-.PHONY: build test test-race coverage test-integration test-integration-race load-check docs docs-preview check acceptance
+.PHONY: build test test-race coverage test-integration test-integration-race load-check deploy-check docs docs-preview check acceptance
 
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -27,6 +27,9 @@ test-integration-race:
 load-check:
 	go run ./cmd/loadcheck
 
+deploy-check:
+	./scripts/deploy-check.sh
+
 docs:
 	cd gefahr-docs && npm ci && npm run build
 
@@ -38,4 +41,4 @@ check:
 	go vet ./...
 	go test -race ./...
 
-acceptance: check test-integration-race
+acceptance: check deploy-check test-integration-race

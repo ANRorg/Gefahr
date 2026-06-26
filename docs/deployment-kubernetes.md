@@ -12,9 +12,11 @@ Before applying it to a real cluster:
 2. Pin the image to the exact release tag you intend to run.
 3. Edit the ConfigMap route hosts, backend URLs, trusted ingress CIDRs, rate
    limits, cache policy, and any upstream TLS trust material.
-4. Ensure your cluster enforces NetworkPolicy; otherwise the admin Service is
+4. Run `make deploy-check` and validate any rendered environment-specific
+   config with `goproxy -config <path> -check-config`.
+5. Ensure your cluster enforces NetworkPolicy; otherwise the admin Service is
    only protected by bearer authentication and cluster network placement.
-5. Mount public TLS certificates or upstream CA/client certificates as Secrets
+6. Mount public TLS certificates or upstream CA/client certificates as Secrets
    when those config fields are enabled.
 
 Apply and inspect:

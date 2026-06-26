@@ -33,6 +33,24 @@ image: ghcr.io/anouarmohamed/gefahr@sha256:<digest>
 
 Avoid `latest`. Avoid mutable tags for production.
 
+## Validate before apply
+
+Run the repository deployment gate before promoting a manifest:
+
+```sh
+make deploy-check
+```
+
+For environment-specific config, validate the rendered file too:
+
+```sh
+goproxy -config ./rendered/proxy.yaml -check-config
+```
+
+The repository gate extracts the `proxy.yaml` payload from
+`deploy/kubernetes/goproxy.yaml` and validates it with the same config loader
+used by the running proxy.
+
 ## Admin token
 
 Set `admin.auth_token_env` in config:

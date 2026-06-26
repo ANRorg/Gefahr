@@ -86,11 +86,19 @@ make test
 make test-race
 make coverage
 make check
+make deploy-check    # validates configs and deployment assets
 make test-integration # requires permission to open local TCP listeners
 make acceptance       # static, race, unit, and real-socket integration checks
 make docs             # builds the generated documentation site
 docker compose up --build -d
 make load-check      # exercises the running demonstration stack
+```
+
+Validate a config without starting listeners or resolving secret environment
+variables:
+
+```sh
+goproxy -config /etc/goproxy/proxy.yaml -check-config
 ```
 
 Release builds can inject identity with `make build VERSION=v1.0.0` or with

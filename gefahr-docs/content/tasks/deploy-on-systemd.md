@@ -34,6 +34,18 @@ sudo chown root:goproxy /etc/goproxy/goproxy.env
 sudo chmod 0640 /etc/goproxy/goproxy.env
 ```
 
+Validate the config before copying it into place or reloading the service:
+
+```sh
+goproxy -config /etc/goproxy/proxy.yaml -check-config
+```
+
+Repository deployment assets can be checked with:
+
+```sh
+make deploy-check
+```
+
 ## Service expectations
 
 The service should:

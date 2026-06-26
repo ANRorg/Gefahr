@@ -5,19 +5,25 @@ Run the final gate from a clean worktree on the release commit.
 ```sh
 make acceptance
 make coverage
+make deploy-check
 docker compose up --build -d
 make load-check
 docker compose stop --timeout 35
 ```
 
 `make acceptance` verifies formatting, `go vet`, all unit tests under the race
-detector, and the real-socket integration suite under the race detector. The
-integration suite covers routing, balancing, caching, atomic reload publication,
-rejected-reload retention, HTTP/2 frontend and upstream compatibility, and retry
-after a real upstream connection failure.
+detector, deploy asset validation, and the real-socket integration suite under
+the race detector. The integration suite covers routing, balancing, caching,
+atomic reload publication, rejected-reload retention, HTTP/2 frontend and
+upstream compatibility, and retry after a real upstream connection failure.
 
 `make coverage` verifies the repository coverage floor. The CI workflow enforces
 the same 85% minimum after running race-enabled coverage.
+
+`make deploy-check` validates repository config examples, extracts and validates
+the Kubernetes `proxy.yaml` ConfigMap payload, and runs host-specific validators
+for Docker Compose, Kubernetes manifests, and systemd units when those tools are
+available.
 
 The load check performs an unmeasured warm-up, records process metrics, sends a
 concurrent cache-bypassing workload, closes idle client connections, and samples

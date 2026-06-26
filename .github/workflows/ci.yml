@@ -42,6 +42,9 @@ jobs:
       - name: Run tests with coverage
         run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
+      - name: Validate deployment assets
+        run: make deploy-check
+
       - name: Enforce coverage floor
         run: |
           go tool cover -func=coverage.txt | awk -v min="85.0" '/^total:/ {

@@ -24,6 +24,7 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 | Compatibility | Shipped | The real-socket integration suite covers cleartext HTTP/1.1 clients, TLS HTTP/2 clients, cleartext HTTP/1.1 upstreams, and HTTPS HTTP/2 upstreams; the documented matrix records supported and unsupported paths. |
 | Kubernetes baseline | Shipped | A hardened manifest includes secret-backed admin auth, exec probes, read-only non-root pods, restricted admin networking, services, and a PodDisruptionBudget. |
 | systemd baseline | Shipped | A hardened service unit and environment-file template cover VM and bare-metal deployments with non-root execution and host-level sandboxing. |
+| Deployment validation | Shipped | `goproxy -check-config` validates config without starting listeners, `make deploy-check` validates repository configs and deployment assets, and CI runs the deployment gate. |
 | Release integrity | Shipped | Release workflow publishes archives, Debian packages, a Homebrew formula artifact, images, checksums, SBOMs, GitHub provenance/SBOM attestations, and keyless cosign signatures. |
 | Operations | Shipped | Docker Compose, Kubernetes and systemd baselines, cloud load-balancer notes, distroless runtime image, executable health check mode, release acceptance, load-check instructions, production-transition checklist, incident runbooks, and disaster-recovery drill templates exist. |
 
@@ -54,5 +55,6 @@ make acceptance
 ```
 
 That command verifies formatting, `go vet`, all unit tests under the race
-detector, and the real-socket integration suite under the race detector.
-Run `make coverage` to verify the repository coverage floor locally.
+detector, deployment asset validation, and the real-socket integration suite
+under the race detector. Run `make coverage` to verify the repository coverage
+floor locally.

@@ -143,6 +143,39 @@ func TestRunRejectsMissingConfig(t *testing.T) {
 	}
 }
 
+func TestRunHandlesCheckConfigFlag(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	configPath := filepath.Join(t.TempDir(), "proxy.yaml")
+	yaml := strings.Replace(startupYAML, "{{backend}}", upstream.URL, 1)
+	if err := os.WriteFile(configPath, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"-config", configPath, "-check-config"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunCheckConfigDoesNotRequireAdminTokenEnvironment(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	configPath := filepath.Join(t.TempDir(), "proxy.yaml")
+	yaml := strings.Replace(startupYAML, "{{backend}}", upstream.URL, 1)
+	yaml = strings.Replace(yaml, "admin:\n  address: 127.0.0.1:0", "admin:\n  address: 127.0.0.1:0\n  auth_token_env: GOPROXY_ADMIN_TOKEN", 1)
+	if err := os.WriteFile(configPath, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"-config", configPath, "-check-config"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRunRejectsInvalidFlags(t *testing.T) {
 	if err := run([]string{"-unknown"}); err == nil {
 		t.Fatal("expected flag error")

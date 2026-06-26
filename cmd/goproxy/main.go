@@ -43,6 +43,7 @@ func run(args []string) error {
 func runContext(parent context.Context, args []string) error {
 	flags := flag.NewFlagSet("goproxy", flag.ContinueOnError)
 	configPath := flags.String("config", "configs/proxy.example.yaml", "path to YAML configuration")
+	checkConfig := flags.Bool("check-config", false, "validate configuration and exit")
 	healthcheck := flags.String("healthcheck", "", "check an HTTP readiness URL and exit")
 	showVersion := flags.Bool("version", false, "print version information and exit")
 	if err := flags.Parse(args); err != nil {
@@ -67,6 +68,10 @@ func runContext(parent context.Context, args []string) error {
 	cfg, err := config.LoadFile(*configPath)
 	if err != nil {
 		return err
+	}
+	if *checkConfig {
+		fmt.Printf("configuration ok: %s\n", *configPath)
+		return nil
 	}
 	adminCredentials, err := adminCredentials(cfg)
 	if err != nil {

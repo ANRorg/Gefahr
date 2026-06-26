@@ -13,6 +13,7 @@ Use this checklist before routing production traffic through Gefahr.
 
 - `make acceptance` passed on the release commit.
 - `make coverage` passed the enforced coverage floor.
+- `make deploy-check` validated configs and deployment assets.
 - Binary checksums or image digest were recorded.
 - SBOM and provenance attestations were generated and verified.
 - Previous known-good artifact remains available.
@@ -20,6 +21,7 @@ Use this checklist before routing production traffic through Gefahr.
 ## Configuration
 
 - Route hosts and path prefixes match the public traffic contract.
+- Production config passes `goproxy -config <path> -check-config`.
 - `timeouts.*` match client, load balancer, and upstream behavior.
 - `limits.*` match host capacity and expected traffic.
 - Route `policy` matches allowed methods, denied paths, ingress headers, and

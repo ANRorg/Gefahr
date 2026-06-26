@@ -8,6 +8,8 @@ path, observability, and rollback process are ready together.
 
 - `make acceptance` passes on the release commit.
 - `make coverage` passes the enforced coverage floor.
+- `make deploy-check` validates config examples, Kubernetes ConfigMap config,
+  and available deployment manifests.
 - Release artifacts, image digests, checksums, SBOMs, and attestations are
   generated and verified.
 - Cosign signatures for release files and container images are verified.
@@ -20,6 +22,8 @@ path, observability, and rollback process are ready together.
 ## Configuration
 
 - Config was reviewed and committed or otherwise approved.
+- Production config passes `goproxy -config <path> -check-config` before any
+  rollout or reload.
 - Route hosts and path prefixes match the intended traffic contract.
 - `timeouts.*` values match expected client, load balancer, and upstream
   behavior.
@@ -90,6 +94,7 @@ load balancer or ingress:
 trusted proxy CIDRs:
 acceptance command output:
 coverage output:
+deployment validation output:
 artifact attestation verification:
 staging smoke evidence:
 production smoke evidence:

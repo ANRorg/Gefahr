@@ -28,6 +28,13 @@ sudoedit /etc/goproxy/goproxy.env
 sudoedit /etc/goproxy/proxy.yaml
 ```
 
+Validate before starting or reloading:
+
+```sh
+goproxy -config /etc/goproxy/proxy.yaml -check-config
+make deploy-check
+```
+
 Start and inspect:
 
 ```sh

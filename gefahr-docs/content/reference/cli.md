@@ -2,7 +2,7 @@
 title: CLI reference
 section: Reference
 order: 220
-summary: Command-line modes for serving traffic, printing version metadata, and running bounded health checks.
+summary: Command-line modes for serving traffic, validating config, printing version metadata, and running bounded health checks.
 ---
 
 # CLI reference
@@ -16,6 +16,17 @@ goproxy -config /etc/goproxy/proxy.yaml
 ```
 
 The process starts public listeners and the admin listener defined in config.
+
+## Validate config
+
+```sh
+goproxy -config /etc/goproxy/proxy.yaml -check-config
+```
+
+Validation loads the YAML with the same strict parser used at startup, rejects
+unknown fields and invalid values, and exits before opening listeners. It does
+not resolve admin token environment variables, so CI and deployment pipelines
+can validate config shape without access to production secrets.
 
 ## Print version
 
