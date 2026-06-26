@@ -71,18 +71,11 @@ select {
   text-decoration: none;
 }
 
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 2px solid #ffffff;
-  border-radius: 50%;
-  background: var(--kube-blue);
-  color: #ffffff;
-  font-size: 0.88rem;
-  font-weight: 800;
-  line-height: 1;
+.brand-mascot {
+  display: block;
+  width: 42px;
+  height: 34px;
+  object-fit: contain;
 }
 
 .brand strong {
@@ -338,6 +331,13 @@ select {
 
 .article-body > h1:first-child {
   display: none;
+}
+
+.article-body > p:first-of-type img {
+  display: block;
+  width: min(420px, 100%);
+  height: auto;
+  margin: 0 0 24px;
 }
 
 .article-body h2 {

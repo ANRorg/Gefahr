@@ -12,7 +12,39 @@ Published release assets include:
 - GitHub artifact attestations.
 - Keyless cosign signatures and signing certificates for release files.
 
-The release workflow intentionally generates package artifacts but does not push
-to an apt repository or Homebrew tap. Repository publication should be added only
-after the project has stable ownership for package update and rollback
-procedures.
+Optional repository publication is also supported. Publication is skipped unless
+the required variables and secrets are configured.
+
+## Homebrew tap publication
+
+Configure:
+
+- Repository variable `HOMEBREW_TAP_REPOSITORY`, for example
+  `AnouarMohamed/homebrew-tap`.
+- Secret `HOMEBREW_TAP_TOKEN`, a token with write access to that tap.
+
+The release workflow copies `dist/gefahr.rb` to `Formula/gefahr.rb` in the tap
+and commits it as `github-actions[bot]`.
+
+Rollback is a normal tap commit revert.
+
+## Apt repository publication
+
+Configure:
+
+- Repository variable `APT_REPO_REPOSITORY`, for example
+  `AnouarMohamed/gefahr-apt`.
+- Optional repository variable `APT_REPO_DISTRIBUTION`, default `stable`.
+- Optional repository variable `APT_REPO_COMPONENT`, default `main`.
+- Secret `APT_REPO_TOKEN`, a token with write access to the apt repository.
+- Secret `APT_REPO_GPG_PRIVATE_KEY`, the ASCII-armored private key used to sign
+  the repository metadata.
+- Optional secret `APT_REPO_GPG_PASSPHRASE`.
+
+The release workflow copies the generated `.deb` files into `pool/`, generates
+`Packages`, `Packages.gz`, `Release`, `InRelease`, and `Release.gpg`, then
+commits and pushes the repository update.
+
+Rollback is a normal repository commit revert followed by client `apt update`.
+Do not remove old package files until all supported rollbacks no longer need
+them.

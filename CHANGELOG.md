@@ -11,6 +11,9 @@ Semantic Versioning.
   GHCR images for tagged releases.
 - Add Debian package artifacts, a generated Homebrew formula artifact, and
   keyless cosign signatures for release files and container images.
+- Add optional Homebrew tap and signed apt repository publication from release
+  tags.
+- Add the Gefahr turtle mascot to the README and documentation site.
 - Add optional bearer-token authentication for admin endpoints through
   `admin.auth_token_env`.
 - Add named scoped admin tokens for health, metrics, read, and admin access.

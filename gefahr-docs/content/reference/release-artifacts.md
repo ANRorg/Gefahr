@@ -62,7 +62,16 @@ gh attestation verify oci://ghcr.io/anouarmohamed/gefahr:v1.0.2 \
 
 ## Package repositories
 
-The release workflow generates package-manager artifacts, but it does not push
-to an apt repository or Homebrew tap. Add repository publication only after
-there is an owner for package update, rollback, signing, and deprecation
-procedures.
+The release workflow can publish package-manager artifacts when repository
+destinations are configured.
+
+Homebrew tap publication requires a tap repository and write token. The workflow
+copies the generated formula to `Formula/gefahr.rb`.
+
+Apt publication requires an apt repository, write token, and GPG private key.
+The workflow publishes `.deb` files, `Packages`, `Packages.gz`, `Release`,
+`InRelease`, and `Release.gpg`.
+
+If those settings are absent, package repository publication is skipped and the
+release still includes the `.deb` files and Homebrew formula as downloadable
+release assets.

@@ -6,6 +6,7 @@ import "./styles.css";
 
 const docByRoute = new Map(docs.map((doc) => [doc.route, doc]));
 const defaultRoute = docs[0]?.route ?? "start/overview";
+const mascotSrc = "gefahr_turtle_v3.png";
 
 function App() {
   const [route, setRoute] = React.useState(currentRoute);
@@ -32,9 +33,7 @@ function App() {
           <Menu size={19} />
         </button>
         <a className="brand" href={`#/${defaultRoute}`} aria-label="Gefahr documentation home">
-          <span className="brand-mark" aria-hidden="true">
-            G
-          </span>
+          <img className="brand-mascot" src={mascotSrc} alt="" aria-hidden="true" />
           <span>
             <strong>Gefahr</strong>
             <small>Docs</small>

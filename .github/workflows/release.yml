@@ -199,6 +199,101 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+      - name: Publish Homebrew tap
+        env:
+          HOMEBREW_TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_REPOSITORY:-}" ] || [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "Homebrew tap publication skipped; HOMEBREW_TAP_REPOSITORY or HOMEBREW_TAP_TOKEN is not configured."
+            exit 0
+          fi
+          workdir="$(mktemp -d)"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${HOMEBREW_TAP_REPOSITORY}.git" "$workdir/tap"
+          mkdir -p "$workdir/tap/Formula"
+          cp dist/gefahr.rb "$workdir/tap/Formula/gefahr.rb"
+          cd "$workdir/tap"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/gefahr.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew tap already contains $GITHUB_REF_NAME."
+            exit 0
+          fi
+          git commit -m "Update Gefahr $GITHUB_REF_NAME"
+          git push
+      - name: Publish apt repository
+        env:
+          APT_REPO_REPOSITORY: ${{ vars.APT_REPO_REPOSITORY }}
+          APT_REPO_TOKEN: ${{ secrets.APT_REPO_TOKEN }}
+          APT_REPO_GPG_PRIVATE_KEY: ${{ secrets.APT_REPO_GPG_PRIVATE_KEY }}
+          APT_REPO_GPG_PASSPHRASE: ${{ secrets.APT_REPO_GPG_PASSPHRASE }}
+          APT_REPO_DISTRIBUTION: ${{ vars.APT_REPO_DISTRIBUTION }}
+          APT_REPO_COMPONENT: ${{ vars.APT_REPO_COMPONENT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APT_REPO_REPOSITORY:-}" ] || [ -z "${APT_REPO_TOKEN:-}" ] || [ -z "${APT_REPO_GPG_PRIVATE_KEY:-}" ]; then
+            echo "Apt repository publication skipped; APT_REPO_REPOSITORY, APT_REPO_TOKEN, or APT_REPO_GPG_PRIVATE_KEY is not configured."
+            exit 0
+          fi
+          distribution="${APT_REPO_DISTRIBUTION:-stable}"
+          component="${APT_REPO_COMPONENT:-main}"
+          if ! command -v dpkg-scanpackages >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y dpkg-dev
+          fi
+          workdir="$(mktemp -d)"
+          git clone "https://x-access-token:${APT_REPO_TOKEN}@github.com/${APT_REPO_REPOSITORY}.git" "$workdir/repo"
+          cd "$workdir/repo"
+          mkdir -p pool/main/g/gefahr
+          cp "$GITHUB_WORKSPACE"/dist/*.deb pool/main/g/gefahr/
+          for arch in amd64 arm64; do
+            package_dir="dists/$distribution/$component/binary-$arch"
+            mkdir -p "$package_dir"
+            dpkg-scanpackages --arch "$arch" pool > "$package_dir/Packages"
+            gzip -9kf "$package_dir/Packages"
+          done
+          release_dir="dists/$distribution"
+          {
+            echo "Origin: Gefahr"
+            echo "Label: Gefahr"
+            echo "Suite: $distribution"
+            echo "Codename: $distribution"
+            echo "Date: $(date -Ru)"
+            echo "Architectures: amd64 arm64"
+            echo "Components: $component"
+            echo "Description: Gefahr package repository"
+            echo "MD5Sum:"
+            find "$release_dir" -type f \( -name Packages -o -name Packages.gz \) | sort | while read -r file; do
+              rel="${file#$release_dir/}"
+              printf " %s %16s %s\n" "$(md5sum "$file" | awk '{print $1}')" "$(wc -c < "$file")" "$rel"
+            done
+            echo "SHA256:"
+            find "$release_dir" -type f \( -name Packages -o -name Packages.gz \) | sort | while read -r file; do
+              rel="${file#$release_dir/}"
+              printf " %s %16s %s\n" "$(sha256sum "$file" | awk '{print $1}')" "$(wc -c < "$file")" "$rel"
+            done
+          } > "$release_dir/Release"
+          export GNUPGHOME="$workdir/gnupg"
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
+          printf '%s' "$APT_REPO_GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg_args=(--batch --yes --pinentry-mode loopback)
+          if [ -n "${APT_REPO_GPG_PASSPHRASE:-}" ]; then
+            gpg_args+=(--passphrase "$APT_REPO_GPG_PASSPHRASE")
+          fi
+          gpg "${gpg_args[@]}" --clearsign -o "$release_dir/InRelease" "$release_dir/Release"
+          gpg "${gpg_args[@]}" -abs -o "$release_dir/Release.gpg" "$release_dir/Release"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pool dists
+          if git diff --cached --quiet; then
+            echo "Apt repository already contains $GITHUB_REF_NAME."
+            exit 0
+          fi
+          git commit -m "Publish Gefahr $GITHUB_REF_NAME"
+          git push
 
   container:
     runs-on: ubuntu-latest

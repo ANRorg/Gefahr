@@ -2,6 +2,10 @@
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/AnouarMohamed/Gefahr/codeql.yml?label=CodeQL&style=flat-square)](https://github.com/AnouarMohamed/Gefahr/actions/workflows/codeql.yml)
 [![CI](https://img.shields.io/github/actions/workflow/status/AnouarMohamed/Gefahr/ci.yml?branch=main&style=flat-square)](https://github.com/AnouarMohamed/Gefahr/actions/workflows/ci.yml) [![Go Version](https://img.shields.io/github/go-mod/go-version/AnouarMohamed/Gefahr?style=flat-square)](go.mod) [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE) [![Go Report Card](https://goreportcard.com/badge/github.com/AnouarMohamed/Gefahr?style=flat-square)](https://goreportcard.com/report/github.com/AnouarMohamed/Gefahr) [![codecov](https://img.shields.io/codecov/c/github/AnouarMohamed/Gefahr?style=flat-square)](https://codecov.io/gh/AnouarMohamed/Gefahr)
 
+<p align="center">
+  <img src="assets/gefahr_turtle_v3.png" alt="Gefahr turtle mascot and wordmark" width="560">
+</p>
+
 gefahr is a configurable Go reverse proxy with host/path routing, round-robin
 and least-connections balancing, active and passive health tracking, bounded
 response caching, per-route request policy guardrails and rate limiting, static

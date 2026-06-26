@@ -74,10 +74,11 @@ cosign verify ghcr.io/anouarmohamed/gefahr:v1.0.2 \
 ```
 
 Package-manager artifacts are attached to the release but not published to a
-package repository or Homebrew tap. For Debian-based hosts, install the `.deb`
-artifact only after verifying checksums, attestations, and cosign signatures.
-For Homebrew, copy `gefahr.rb` into a tap and review the generated URLs and
-SHA-256 values before publishing.
+package repository or Homebrew tap unless the publication variables and secrets
+documented in [`packaging/README.md`](../packaging/README.md) are configured.
+For Debian-based hosts, install the `.deb` artifact only after verifying
+checksums, attestations, and cosign signatures. For Homebrew, review the
+generated URLs and SHA-256 values before publishing to a tap.
 
 Before promoting a release to production, complete the
 [production transition checklist](production-transition.md) and attach disaster

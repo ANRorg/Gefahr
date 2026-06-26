@@ -12,6 +12,8 @@ path, observability, and rollback process are ready together.
   generated and verified.
 - Cosign signatures for release files and container images are verified.
 - Debian packages or Homebrew formula artifacts are reviewed before use.
+- Homebrew tap and apt repository publication variables/secrets are configured,
+  or release owners explicitly accept release-asset-only package delivery.
 - The production deployment pins an exact image tag or binary checksum.
 - The previous known-good version remains available for rollback.
 

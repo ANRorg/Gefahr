@@ -7,6 +7,8 @@ summary: Learn what Gefahr is, where it fits, and which docs to read first.
 
 # Gefahr documentation
 
+![Gefahr turtle mascot and wordmark](gefahr_turtle_v3.png)
+
 Gefahr is a configurable Go reverse proxy for teams that want an explicit,
 file-based edge component they can test, review, deploy, and roll back like
 the rest of their infrastructure.

@@ -33,7 +33,7 @@ from-scratch lab constraints archived under [`docs/legacy-guide`](legacy-guide/R
 |---|---|
 | Traffic protection | Static per-route request guardrails and rate limiting exist, but there is no full WAF rule engine, bot classification, or adaptive abuse-control policy. |
 | Access-control model | Scoped admin bearer tokens exist for health, metrics, read, and admin access, but there is no external identity-provider integration. |
-| Package repositories | Release artifacts include Debian packages and a Homebrew formula artifact, but the project does not yet publish to an apt repository or Homebrew tap. |
+| Package repositories | Release workflow can publish to a Homebrew tap and signed apt repository when the required repositories, tokens, and apt signing key are configured. |
 
 ## Superseded legacy requirements
 
